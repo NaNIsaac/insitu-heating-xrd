@@ -1,4 +1,4 @@
-# insitu-heating-xrd — 승온 in-situ 2D XRD 분석 (261004 빔타임)
+# insitu-heating-xrd — 승온 in-situ 2D XRD 분석
 
 Eiger HDF5 디텍터 이미지 → 2θ 프로파일 / 시간 히트맵 / 피크 추적.
 

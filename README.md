@@ -1,5 +1,7 @@
 # insitu-heating-xrd — 승온 in-situ 2D XRD 분석
 
+In-situ heating 2D XRD analysis: Eiger HDF5 detector images to 2θ profiles, time heatmaps and peak tracking.
+
 Eiger HDF5 디텍터 이미지 → 2θ 프로파일 / 시간 히트맵 / 피크 추적.
 
 ## 구조

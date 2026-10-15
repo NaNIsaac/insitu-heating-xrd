@@ -7,8 +7,9 @@ Eiger HDF5 디텍터 이미지 → 2θ 프로파일 / 시간 히트맵 / 피크 
 ## 구조
 
 ```
-main.py                  진입점 (서브커맨드 CLI)
+main.py                  진입점 (인자 없으면 compare)
 src/insitu_xrd/
+  cli.py                 Typer 서브커맨드 정의 (insitu-xrd 스크립트 · python -m insitu_xrd)
   config.py              HDF5 키 등 코드 상수 + experiments.toml [geometry]·[paths] 읽기
   style.py               그림 공통 스타일 (Origin rc, 구간·피크 색)
   geometry.py            Geometry (캘리브레이션 값, 2θ/q/d 변환)
@@ -18,24 +19,38 @@ src/insitu_xrd/
   timing.py              [timing]  파일 생성시각 vs EPICS 촬영시각
   center_profile.py      [center]  중앙 스트립 픽셀 프로파일
   tth_profile.py         [profile] 단일 이미지 2θ 프로파일
-  heatmap.py             [heatmap] 폴더 전체 시간 히트맵 (+ 온도)
+  heatmap.py             폴더 적분 · 캐시 · 시간 히트맵 (+ 온도), overview · compare 공용
+  live.py                [heatmap] 온도 없이 히트맵 + 피크 면적 · FWHM (--watch 로 측정 중 갱신)
+  image.py               [image]   h5 한 장 원본 | 2θ–χ 펼친 이미지
   temperature.py         [merge-temp, temp] 온도 로그 병합 / 시각별 온도 조회
   segments.py            온도 프로파일 → 승온/유지/하온 구간 자동 분할
   tracks.py              피크 추적 · 전이(기준선 넘나듦) 판단
   overview.py            [overview] 온도 + 히트맵 + 구간별 프로파일 한 장
   interactive.py         overview 의 인터랙티브 HTML (Plotly)
   compare.py             [compare] 실험별 X vs 온도 · T50
-data/temperature/
+  overlay.py             [overlay] 여러 스캔 전이 겹쳐 보기
+  profiles.py            [profiles] 여러 스캔 2θ 프로파일 겹쳐 보기
+  avrami.py              [avrami]  등온 X(t) → Avrami n · k · Ea
+data/temperature/        (git 제외, 로컬에만)
   raw/                   온도 컨트롤러 원본 로그
   manual_data_20261004_x1.csv   병합본 (온도 조회 기본값)
 out/<샘플>/              모든 결과물 (git 제외)
 out/cache/               적분 결과 캐시 (지워도 다시 계산됨)
 ```
 
+## 설치
+
+Python 3.14 이상, [uv](https://docs.astral.sh/uv/).
+
+```powershell
+git clone https://github.com/NaNIsaac/insitu-heating-xrd.git
+cd insitu-heating-xrd
+uv sync
+```
+
 ## 사용
 
 ```powershell
-uv sync
 uv run main.py                        # 인자 없이 (VS Code ▶ 포함) = compare (experiments.toml)
 uv run main.py --no-show              # 위와 같되 브라우저 안 염 (명령 없이 옵션만 → 기본 명령에)
 uv run main.py -h                     # 명령 목록
@@ -49,7 +64,7 @@ uv run main.py image Z:\...\IGOx8_3rd -1          # 폴더의 마지막 파일 (
 
 ```powershell
 uv run main.py profile Z:\...\IGO_x1_5th 125      # h5 한 장의 2θ 프로파일 + 피크 피팅 (번호 생략 = 0, -1 = 마지막)
-uv run main.py heatmap Z:\...\IGO_x1_5th          # 폴더 → 2θ 히트맵 + 피크 면적 · FWHM (온도 없이)
+uv run main.py heatmap Z:\...\IGO_x1_5th          # 폴더 (또는 실험 이름) → 2θ 히트맵 + 피크 면적 · FWHM (온도 없이)
 uv run main.py heatmap Z:\...\IGO_x1_5th --watch 30   # 측정 중: 30 초마다 새 파일 반영
 ```
 
@@ -267,18 +282,14 @@ uv run main.py avrami exp2                  # [[iso]] 대신 [[exp2]] — 기존
 uv run main.py merge-temp                        # raw/*.csv → 병합본 (새 로그 추가 시 재실행)
 uv run main.py temp 16:55:00                     # 특정 시각(KST)의 온도
 uv run main.py temp Z:\...\test2x1_00086.h5      # 특정 프레임의 온도
-uv run main.py temp Z:\...\test2x1               # 폴더 전체 프레임별 온도
-uv run main.py heatmap Z:\...\test2x1 --temp data\temperature\manual_data_20261004_x1.csv --at 0 --at 10 --at 16:55:00
+uv run main.py temp Z:\...\test2x1               # 폴더 전체 프레임별 온도 (--csv 로그 지정, --max-gap)
 ```
 
-- `--temp CSV` : 히트맵 옆에 온도(PV/SV) 패널
-- `--at T`     : 여러 개면 `--at` 반복. 숫자 = 첫 프레임 기준 상대시간(분, `--seconds` 면 초), `HH:MM:SS` = KST 시각.
-  해당 프레임을 가로선으로 표시하고, 그 시점 프로파일을 온도와 함께 오른쪽 패널에 겹쳐 그림
-- 결과: `out/<샘플>/<샘플>_frames.csv` (프레임별 시각·온도), `<샘플>_tth_heatmap.png/.npz`
 - 로그가 끊긴 구간(가장 가까운 기록과 5초 넘게 차이)은 온도 NaN
+- 온도 패널 · `at` 시각 표시가 붙은 히트맵은 CLI 가 아니라 파이썬 `heatmap.run(heatmap.Config(temp_log=..., at=...))` 으로 (아래)
 
 이미지 폴더/파일은 **실제 경로**를 그대로 적음 (자동으로 찾지 않음). overview 는 `experiments.toml` 의 실험 이름(`x1`, `exp2.x8`)도 받음.
-CLI 는 [Typer](https://typer.tiangolo.com) (`src/insitu_xrd/cli.py`: 명령 = 함수 하나, 옵션 = 함수 인자). 여러 값 옵션은 반복해서 씀 (`--at 5 --at 10`).
+CLI 는 [Typer](https://typer.tiangolo.com) (`src/insitu_xrd/cli.py`: 명령 = 함수 하나, 옵션 = 함수 인자). 여러 값 옵션은 반복해서 씀 (`--peaks 18.4 --peaks 21.4`).
 경로를 생략하면 `experiments.toml` `[paths]` 의 `default_folder` / `default_file` 사용.
 `uv run insitu-xrd <명령>` 또는 `python -m insitu_xrd <명령>` 도 동일.
 
@@ -296,3 +307,5 @@ res = heatmap.run(heatmap.Config(folder=Path(r"Z:\...\test2x1"), geometry=geo,
 res.frames                                  # 프레임별 file / time_kst / time_rel / temp_pv / temp_sv
 TempLog().at([1791100537.0])                # Unix 시각 → 온도
 ```
+
+`at`: 숫자 = 첫 프레임 기준 상대시간(분), `"HH:MM:SS"` = KST 시각. 해당 프레임을 가로선으로 표시하고 그 시점 프로파일을 오른쪽 패널에 겹쳐 그림.

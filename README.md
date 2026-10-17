@@ -12,7 +12,7 @@ src/insitu_xrd/
   cli.py                 Typer 서브커맨드 정의 (insitu-xrd 스크립트 · python -m insitu_xrd)
   config.py              HDF5 키 등 코드 상수 + experiments.toml [geometry]·[paths] 읽기
   style.py               그림 공통 스타일 (Origin rc, 구간·피크 색)
-  geometry.py            Geometry (캘리브레이션 값, 2θ/q/d 변환)
+  geometry.py            Geometry (캘리브레이션 값, 2θ/q/d 변환은 qorageom 사용)
   io.py                  이미지 / EPICS 타임스탬프 읽기
   integrate.py           RadialIntegrator (이미지 → 2θ 프로파일)
   peaks.py               피크 검출 · 가우시안 피팅
@@ -36,6 +36,7 @@ data/temperature/        (git 제외, 로컬에만)
   manual_data_20261004_x1.csv   병합본 (온도 조회 기본값)
 out/<샘플>/              모든 결과물 (git 제외)
 out/cache/               적분 결과 캐시 (지워도 다시 계산됨)
+tests/                   pytest (합성 이미지 · 곡선만, 실제 데이터 불필요)
 ```
 
 ## 설치
@@ -46,6 +47,15 @@ Python 3.14 이상, [uv](https://docs.astral.sh/uv/).
 git clone https://github.com/NaNIsaac/insitu-heating-xrd.git
 cd insitu-heating-xrd
 uv sync
+```
+
+2θ · q · d 변환과 픽셀별 2θ 맵은 [QoraGeom](https://github.com/NaNIsaac/QoraGeom) (`qorageom.geometry`) 을
+GitHub 에서 받아 씀 (`uv sync` 가 같이 설치).
+
+테스트:
+
+```powershell
+uv run pytest
 ```
 
 ## 사용

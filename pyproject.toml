@@ -27,3 +27,8 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "insitu_xrd"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

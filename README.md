@@ -2,41 +2,16 @@
 
 In-situ heating 2D XRD analysis: Eiger HDF5 detector images to 2θ profiles, time heatmaps and peak tracking.
 
-Eiger HDF5 디텍터 이미지 → 2θ 프로파일 / 시간 히트맵 / 피크 추적.
+시료를 가열하면서 Eiger 2D 디텍터로 연속 촬영한 HDF5 이미지와 온도 컨트롤러 로그를 합쳐,
+비정질 → 결정 전이를 시간·온도 축에서 보는 분석 도구.
 
-## 구조
+- 이미지 폴더 → 2θ 프로파일 · 시간 히트맵 (측정 중 `--watch` 로 갱신)
+- 온도 로그로 승온 / 유지 / 하온 구간 자동 분할, 피크 추적, 피크 면적 · FWHM vs 온도
+- 실험별 결정화 분율 X vs 온도와 전이 온도 T50 비교, 등온 측정의 Avrami 지수
 
-```
-main.py                  진입점 (인자 없으면 compare)
-src/insitu_xrd/
-  cli.py                 Typer 서브커맨드 정의 (insitu-xrd 스크립트 · python -m insitu_xrd)
-  config.py              HDF5 키 등 코드 상수 + experiments.toml [geometry]·[paths] 읽기
-  style.py               그림 공통 스타일 (Origin rc, 구간·피크 색)
-  geometry.py            Geometry (캘리브레이션 값, 2θ/q/d 변환은 qorageom 사용)
-  io.py                  이미지 / EPICS 타임스탬프 읽기
-  integrate.py           RadialIntegrator (이미지 → 2θ 프로파일)
-  peaks.py               피크 검출 · 가우시안 피팅
-  timing.py              [timing]  파일 생성시각 vs EPICS 촬영시각
-  center_profile.py      [center]  중앙 스트립 픽셀 프로파일
-  tth_profile.py         [profile] 단일 이미지 2θ 프로파일
-  heatmap.py             폴더 적분 · 캐시 · 시간 히트맵 (+ 온도), overview · compare 공용
-  live.py                [heatmap] 온도 없이 히트맵 + 피크 면적 · FWHM (--watch 로 측정 중 갱신)
-  image.py               [image]   h5 한 장 원본 | 2θ–χ 펼친 이미지
-  temperature.py         [merge-temp, temp] 온도 로그 병합 / 시각별 온도 조회
-  segments.py            온도 프로파일 → 승온/유지/하온 구간 자동 분할
-  tracks.py              피크 추적 · 전이(기준선 넘나듦) 판단
-  overview.py            [overview] 온도 + 히트맵 + 구간별 프로파일 한 장
-  interactive.py         overview 의 인터랙티브 HTML (Plotly)
-  compare.py             [compare] 실험별 X vs 온도 · T50
-  overlay.py             [overlay] 여러 스캔 전이 겹쳐 보기
-  profiles.py            [profiles] 여러 스캔 2θ 프로파일 겹쳐 보기
-  avrami.py              [avrami]  등온 X(t) → Avrami n · k · Ea
-data/temperature/        (git 제외, 로컬에만)
-  raw/                   온도 컨트롤러 원본 로그
-  manual_data_20261004_x1.csv   병합본 (온도 조회 기본값)
-out/<샘플>/              모든 결과물 (git 제외)
-out/cache/               적분 결과 캐시 (지워도 다시 계산됨)
-tests/                   pytest (합성 이미지 · 곡선만, 실제 데이터 불필요)
+```powershell
+uv run main.py heatmap Z:\...\IGO_x1_5th      # 폴더 하나 → 2θ 히트맵 + 피크 면적 · FWHM
+uv run main.py overview x1                    # experiments.toml 의 실험 x1 → 온도 + 히트맵 + 구간 한 장
 ```
 
 ## 설치
@@ -61,8 +36,8 @@ uv run pytest
 ## 사용
 
 ```powershell
-uv run main.py                        # 인자 없이 (VS Code ▶ 포함) = compare (experiments.toml)
-uv run main.py --no-show              # 위와 같되 브라우저 안 염 (명령 없이 옵션만 → 기본 명령에)
+uv run main.py                        # 인자 없이 = compare (experiments.toml)
+uv run main.py --no-show              # 위와 같되 브라우저 안 염
 uv run main.py -h                     # 명령 목록
 uv run main.py overview x1 --save     # 결과물(PNG · CSV · HTML)은 --save 일 때만 out/ 에 저장
 uv run main.py image exp2.x8 200      # h5 한 장: 원본 | 2θ–χ 로 펼친 이미지 (+ 2θ 프로파일)
@@ -80,8 +55,6 @@ uv run main.py heatmap Z:\...\IGO_x1_5th --watch 30   # 측정 중: 30 초마다
 
 heatmap 맨 위 값: 피크마다 지금 면적 · 최근 5 분 변화 (전체 증가분 대비 %, `--recent`) · FWHM · 2θ.
 최근 변화가 0 % 근처면 포화 = 상변이 끝. 적분 캐시는 새 파일만 이어 붙이므로 다시 돌려도 빠름.
-
-`center` · `timing` 은 도움말에서 숨겼지만 그대로 동작.
 
 ### 온도 + 히트맵 + 온도 구간 한 장 (Origin 스타일)
 
@@ -115,7 +88,7 @@ uv run main.py overview Z:\...\test2x1 data\temperature\other.csv   # 온도 로
 **FWHM 패널** (피크 면적 아래): `[peaks]` 피크마다 프레임별 FWHM vs 시간, 오른쪽에 FWHM vs 온도 (승온 실선 · 하온 점선).
 좁아짐 = 결정립 성장, 넓어짐 = 변형·결함. 승온 후 냉각에서 되돌아오면 열적(가역) 변화. `_frames.csv` 에 `center_*` · `FWHM_*` 열.
 
-**전이 온도 상자** (왼쪽 맨 아래 피크 범례 옆, 시료·시작 시각 포함 — 왼쪽 아래만 캡처해도 됨): `experiments.toml` 의 `[peaks]`·`[options]` 로 compare 와 같은 방식의 T50
+**전이 온도 상자** (왼쪽 맨 아래 피크 범례 옆, 시료·시작 시각 포함): `experiments.toml` 의 `[peaks]`·`[options]` 로 compare 와 같은 방식의 T50
 (승온 중 X = 0.5) 을 피크(hkl)별로 크게 표시. 추적된 피크도 같은 hkl 이름 · T50 으로 표시됨. 결과 `<샘플>_transition.csv`.
 다른 설정: `--peaks-config 파일.toml`, 끄기: `--no-transition`.
 
@@ -136,13 +109,13 @@ PNG 는 항상 한 장짜리로 저장.
 - 오른쪽 범례 클릭으로 프로파일 켜고 끄기, 카메라 아이콘으로 PNG 저장
 - matplotlib 창(`--mpl`)에서도 확대하면 온도 눈금이 촘촘해짐
 
-옵션: `--clip 25 99.7` (히트맵 색 범위 = 세기 백분위, 기본값이 고대비; 예전처럼 `--clip 1 99.5`), `--cmap jet`, `--log`, `--normalize`, `--seconds`, `--bin`, `--no-show`,
+옵션: `--clip 25 99.7` (히트맵 색 범위 = 세기 백분위, 기본값이 고대비), `--cmap jet`, `--log`, `--normalize`, `--seconds`, `--bin`, `--no-show`,
 `--hold-rate 1.5` (이보다 느리면 유지 [°C/min]), `--min-seg 90` (더 짧은 구간 무시 [s]),
 `--no-segments`, `--no-fill` (로그 공백 추정 끄기), `--no-match` (폴더별 세기 맞춤 끄기)
 
 ### 디텍터 기하 / 빔
 
-`experiments.toml` 의 `[geometry]` 만 고치면 모든 명령 기본값이 바뀜 (`config.py` 는 이 값을 읽기만 함, 형식 오류면 모든 명령이 멈추고 알려 줌):
+`experiments.toml` 의 `[geometry]` 만 고치면 모든 명령 기본값이 바뀜 (형식 오류면 모든 명령이 멈추고 알려 줌):
 
 ```toml
 [geometry]
@@ -157,14 +130,13 @@ default_folder = 'Z:\exp\hkim\261004\images\testx1'
 default_file   = 'Z:\exp\hkim\261004\images\testx1\testx1_00089.h5'
 ```
 
-항목이나 파일이 없으면 기존 기본값 사용. HDF5 키·EPICS 기준시각 같은 코드 상수는 `config.py` 에 그대로.
+항목이나 파일이 없으면 기존 기본값 사용.
 
 일회성으로는 `--poni 514 850 --sdd 861.14 --energy 13 --alpha 18.9`.
 
 ### 실험 비교: 피크별 결정화 분율 X vs 온도 + T50
 
-`experiments.toml` 에 실험마다 이미지 폴더 · 온도 로그(recipe) 의 **전체 경로**를 적고
-(자동으로 찾지 않음 — 2nd 측정 · 로컬 백업 · Z: 원본이 섞여 있어서 적힌 경로만 씀):
+`experiments.toml` 에 실험마다 이미지 폴더 · 온도 로그(recipe) 의 **전체 경로**를 적고:
 
 ```toml
 [[exp]]
@@ -180,7 +152,7 @@ recipe = ['D:\...\recipe_data_20261005_111220.csv']
 
 ```powershell
 uv run main.py compare                  # 회차([[exp]], [[exp2]], ...) 전부 차례로, 회차마다 브라우저 창 하나
-uv run main.py compare exp2             # 이 회차만 (여러 개: compare exp exp2, 예전 -g exp2 도 됨)
+uv run main.py compare exp2             # 이 회차만 (여러 개: compare exp exp2)
 uv run main.py compare 다른설정.toml
 ```
 
@@ -202,8 +174,6 @@ uv run main.py compare 다른설정.toml
   - X 곡선도 이 배경 직선으로 정규화 (창 밖은 창 끝 값으로 고정) → 그래프의 0.5 교차 = T50
   - `_T50.csv`: `T50`, `±`(오차), `ΔT25-75`(전이 폭). 범례 `x1  T50 400 °C  ΔT 8`
   - 창을 못 잡으면(전이 전후 데이터 부족) 예전 방식(양 끝 n_norm 프레임 정규화 → 첫 교차)으로 하고 표시
-  - 검토 결과 (예전 → 지금): t_range 를 280–460 / 250–650 으로 바꿨을 때 T50 변동 최대 3.5 °C → (222) 0.3 °C 이내,
-    전이 뒤 15 % 드리프트 −0.6 ~ −1.5 °C → 0 °C
 - 이미지가 전이 이후부터만 있으면(전이 전 기준 없음) 그 실험은 T50 계산 안 하고 범례에 표시
 - 없는 경로가 있으면 계산 전에 한꺼번에 알려 주고 멈춤
 - 결과: `out/compare/<설정이름>.png / .html / _T50.csv / _frames.csv`
@@ -265,7 +235,7 @@ recipe = ['D:\...\recipe_data_xxxx.csv']   # (선택) 없으면 n, k 만
 ```powershell
 uv run main.py avrami                       # [[iso]] 전부
 uv run main.py avrami --only x1             # 이름 또는 sample 로 일부만 (여러 개: --only x1 --only x2)
-uv run main.py avrami exp2                  # [[iso]] 대신 [[exp2]] — 기존 승온 데이터로 시험 (예전 -g exp2 도 됨)
+uv run main.py avrami exp2                  # [[iso]] 대신 [[exp2]] — 기존 승온 데이터로 시험
 ```
 
 `[[iso]]` 도 다른 회차와 똑같이 쓸 수 있음: `compare iso`, `overview iso.x1_370`, `overlay exp2.x1 iso.x1_370`,
@@ -299,7 +269,7 @@ uv run main.py temp Z:\...\test2x1               # 폴더 전체 프레임별 �
 - 온도 패널 · `at` 시각 표시가 붙은 히트맵은 CLI 가 아니라 파이썬 `heatmap.run(heatmap.Config(temp_log=..., at=...))` 으로 (아래)
 
 이미지 폴더/파일은 **실제 경로**를 그대로 적음 (자동으로 찾지 않음). overview 는 `experiments.toml` 의 실험 이름(`x1`, `exp2.x8`)도 받음.
-CLI 는 [Typer](https://typer.tiangolo.com) (`src/insitu_xrd/cli.py`: 명령 = 함수 하나, 옵션 = 함수 인자). 여러 값 옵션은 반복해서 씀 (`--peaks 18.4 --peaks 21.4`).
+여러 값 옵션은 반복해서 씀 (`--peaks 18.4 --peaks 21.4`).
 경로를 생략하면 `experiments.toml` `[paths]` 의 `default_folder` / `default_file` 사용.
 `uv run insitu-xrd <명령>` 또는 `python -m insitu_xrd <명령>` 도 동일.
 
@@ -319,3 +289,38 @@ TempLog().at([1791100537.0])                # Unix 시각 → 온도
 ```
 
 `at`: 숫자 = 첫 프레임 기준 상대시간(분), `"HH:MM:SS"` = KST 시각. 해당 프레임을 가로선으로 표시하고 그 시점 프로파일을 오른쪽 패널에 겹쳐 그림.
+
+## 구조
+
+```
+main.py                  진입점 (인자 없으면 compare)
+src/insitu_xrd/
+  cli.py                 Typer 서브커맨드 정의 (insitu-xrd 스크립트 · python -m insitu_xrd)
+  config.py              HDF5 키 등 코드 상수 + experiments.toml [geometry]·[paths] 읽기
+  style.py               그림 공통 스타일 (Origin rc, 구간·피크 색)
+  geometry.py            Geometry (캘리브레이션 값, 2θ/q/d 변환은 qorageom 사용)
+  io.py                  이미지 / EPICS 타임스탬프 읽기
+  integrate.py           RadialIntegrator (이미지 → 2θ 프로파일)
+  peaks.py               피크 검출 · 가우시안 피팅
+  timing.py              [timing]  파일 생성시각 vs EPICS 촬영시각
+  center_profile.py      [center]  중앙 스트립 픽셀 프로파일
+  tth_profile.py         [profile] 단일 이미지 2θ 프로파일
+  heatmap.py             폴더 적분 · 캐시 · 시간 히트맵 (+ 온도), overview · compare 공용
+  live.py                [heatmap] 온도 없이 히트맵 + 피크 면적 · FWHM (--watch 로 측정 중 갱신)
+  image.py               [image]   h5 한 장 원본 | 2θ–χ 펼친 이미지
+  temperature.py         [merge-temp, temp] 온도 로그 병합 / 시각별 온도 조회
+  segments.py            온도 프로파일 → 승온/유지/하온 구간 자동 분할
+  tracks.py              피크 추적 · 전이(기준선 넘나듦) 판단
+  overview.py            [overview] 온도 + 히트맵 + 구간별 프로파일 한 장
+  interactive.py         overview 의 인터랙티브 HTML (Plotly)
+  compare.py             [compare] 실험별 X vs 온도 · T50
+  overlay.py             [overlay] 여러 스캔 전이 겹쳐 보기
+  profiles.py            [profiles] 여러 스캔 2θ 프로파일 겹쳐 보기
+  avrami.py              [avrami]  등온 X(t) → Avrami n · k · Ea
+data/temperature/        (git 제외, 로컬에만)
+  raw/                   온도 컨트롤러 원본 로그
+  manual_data_20261004_x1.csv   병합본 (온도 조회 기본값)
+out/<샘플>/              모든 결과물 (git 제외)
+out/cache/               적분 결과 캐시 (지워도 다시 계산됨)
+tests/                   pytest (합성 이미지 · 곡선만, 실제 데이터 불필요)
+```

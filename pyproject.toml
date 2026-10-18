@@ -33,3 +33,6 @@ module-name = "insitu_xrd"
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.ruff]
+line-length = 100

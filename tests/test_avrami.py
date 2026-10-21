@@ -3,11 +3,11 @@ import pytest
 
 from insitu_xrd.avrami import avrami_fit, hold_range, jmak_fit, local_n
 
-N, K = 2.5, 0.2          # Avrami exponent, rate constant [1/min]
+N, K = 2.5, 0.2  # Avrami exponent, rate constant [1/min]
 
 
 def jmak(t, t0=0.0):
-    return 1 - np.exp(-np.clip(K * (t - t0), 0, None) ** N)
+    return 1 - np.exp(-(np.clip(K * (t - t0), 0, None) ** N))
 
 
 def test_avrami_fit_exact_curve():
@@ -54,4 +54,4 @@ def test_hold_range():
     a, b = hold_range(T)
     assert T[a] >= 367 and T[a - 1] < 367
     assert a <= 50 and b >= 149
-    assert hold_range(np.full(50, 370.0)) is None      # no ramp → no hold detection
+    assert hold_range(np.full(50, 370.0)) is None  # no ramp → no hold detection

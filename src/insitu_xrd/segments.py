@@ -1,4 +1,5 @@
 """온도 프로파일 → 승온 / 유지 / 하온 구간 자동 분할."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,28 +13,28 @@ from .temperature import PV, SV, TempLog, fmt_kst
 
 Kind = Literal["heat", "hold", "cool", "gap"]
 _CODE = {1: "heat", 0: "hold", -1: "cool", 2: "gap"}
-EDGE_HOLD = 120.0               # 로그 처음/끝 값을 바깥으로 유지하는 최대 시간 [s]
+EDGE_HOLD = 120.0  # 로그 처음/끝 값을 바깥으로 유지하는 최대 시간 [s]
 
 
 @dataclass(frozen=True, slots=True)
 class SegmentOptions:
-    hold_rate: float = 1.5      # |dT/dt| 이 이보다 작으면 유지 구간 [°C/min]
+    hold_rate: float = 1.5  # |dT/dt| 이 이보다 작으면 유지 구간 [°C/min]
     min_duration: float = 90.0  # 이보다 짧은 구간은 이웃에 흡수 [s]
-    window: float = 60.0        # 기울기 계산 창 [s]
-    dt: float = 1.0             # 재샘플 간격 [s]
-    context: float = 3 * 3600.0 # 앞뒤로 이만큼 로그를 더 보고 판단 (구간이 잘려 보이지 않게) [s]
-    fill_gaps: bool = True      # 로그 끊긴 구간을 이웃 램프 외삽으로 추정
+    window: float = 60.0  # 기울기 계산 창 [s]
+    dt: float = 1.0  # 재샘플 간격 [s]
+    context: float = 3 * 3600.0  # 앞뒤로 이만큼 로그를 더 보고 판단 (구간이 잘려 보이지 않게) [s]
+    fill_gaps: bool = True  # 로그 끊긴 구간을 이웃 램프 외삽으로 추정
 
 
 @dataclass(frozen=True, slots=True)
 class Segment:
     kind: Kind
-    t0: float                   # Unix [s]
+    t0: float  # Unix [s]
     t1: float
-    T0: float                   # 시작/끝 온도 [°C]
+    T0: float  # 시작/끝 온도 [°C]
     T1: float
-    rate: float                 # 평균 승온 속도 [°C/min]
-    estimated: bool = False     # 로그 끊긴 구간을 외삽한 값이 섞여 있음
+    rate: float  # 평균 승온 속도 [°C/min]
+    estimated: bool = False  # 로그 끊긴 구간을 외삽한 값이 섞여 있음
 
     @property
     def duration(self) -> float:
@@ -54,7 +55,10 @@ class Segment:
         lines = [self.label]
         if self.kind in ("heat", "cool"):
             lines.append(f"{self.T0:.0f} → {self.T1:.0f} °C")
-        lines += [f"{self.duration / 60:.1f} min", f"{fmt_kst(self.t0)[11:16]}–{fmt_kst(self.t1)[11:16]}"]
+        lines += [
+            f"{self.duration / 60:.1f} min",
+            f"{fmt_kst(self.t0)[11:16]}–{fmt_kst(self.t1)[11:16]}",
+        ]
         if self.estimated:
             lines.append("(T partly est.)")
         return lines
@@ -70,20 +74,22 @@ def _rle(code: np.ndarray) -> list[list[int]]:
 
 def _merge_short(runs: list[list[int]], min_len: int) -> list[list[int]]:
     """짧은 런을 가장 짧은 것부터 더 긴 이웃에 흡수 (gap 은 건드리지 않음)."""
+
     def neighbors(k: int) -> list[int]:
         return [j for j in (k - 1, k + 1) if 0 <= j < len(runs) and runs[j][0] != 2]
 
     while True:
         # 양옆이 gap 뿐인 짧은 런은 흡수할 곳이 없으므로 그대로 둠
-        cand = [k for k, r in enumerate(runs)
-                if r[0] != 2 and r[2] - r[1] < min_len and neighbors(k)]
+        cand = [
+            k for k, r in enumerate(runs) if r[0] != 2 and r[2] - r[1] < min_len and neighbors(k)
+        ]
         if not cand:
             return runs
         k = min(cand, key=lambda k: runs[k][2] - runs[k][1])
         j = max(neighbors(k), key=lambda j: runs[j][2] - runs[j][1])
         runs[k][0] = runs[j][0]
         merged: list[list[int]] = []
-        for r in runs:      # 같은 코드끼리 합치기
+        for r in runs:  # 같은 코드끼리 합치기
             if merged and merged[-1][0] == r[0]:
                 merged[-1][2] = r[2]
             else:
@@ -110,11 +116,11 @@ def _refine(t: np.ndarray, T: np.ndarray, a: int, b: int, c: int, w: int) -> int
 
 @dataclass(slots=True)
 class Detection:
-    t: np.ndarray               # 1 s 격자, Unix [s]
-    T: np.ndarray               # 판단에 쓴 온도 (SV 우선, 끊긴 곳은 추정값)
-    pv: np.ndarray              # 측정 PV (끊긴 곳 NaN)
+    t: np.ndarray  # 1 s 격자, Unix [s]
+    T: np.ndarray  # 판단에 쓴 온도 (SV 우선, 끊긴 곳은 추정값)
+    pv: np.ndarray  # 측정 PV (끊긴 곳 NaN)
     sv: np.ndarray
-    estimated: np.ndarray       # bool, T 가 추정값인 지점
+    estimated: np.ndarray  # bool, T 가 추정값인 지점
     segments: list[Segment]
 
     def at(self, times: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -129,7 +135,9 @@ def _line(t: np.ndarray, T: np.ndarray) -> float:
     return float(np.polyfit(t[ok], T[ok], 1)[0]) if ok.sum() >= 2 else 0.0
 
 
-def _fill_gaps(t: np.ndarray, T: np.ndarray, hold: float, span: int) -> tuple[np.ndarray, np.ndarray]:
+def _fill_gaps(
+    t: np.ndarray, T: np.ndarray, hold: float, span: int
+) -> tuple[np.ndarray, np.ndarray]:
     """끊긴 구간: 뒤(또는 앞)가 램프면 그 직선을 연장하되 반대편 온도에서 멈춤, 아니면 선형 보간.
     로그 처음/끝 바깥(한쪽만 있음)은 어디서 멈출지 모르므로 외삽하지 않고 가장 가까운 값 유지."""
     T = T.copy()
@@ -139,8 +147,8 @@ def _fill_gaps(t: np.ndarray, T: np.ndarray, hold: float, span: int) -> tuple[np
             continue
         before = T[a - 1] if a > 0 else np.nan
         after = T[b] if b < len(T) else np.nan
-        r_after = _line(t[b:b + span], T[b:b + span]) if b < len(T) else 0.0
-        r_before = _line(t[max(0, a - span):a], T[max(0, a - span):a]) if a > 0 else 0.0
+        r_after = _line(t[b : b + span], T[b : b + span]) if b < len(T) else 0.0
+        r_before = _line(t[max(0, a - span) : a], T[max(0, a - span) : a]) if a > 0 else 0.0
         tt = t[a:b]
         both = np.isfinite(before) and np.isfinite(after)
         if both and abs(r_after) * 60 >= hold:
@@ -167,8 +175,9 @@ def _fill_gaps(t: np.ndarray, T: np.ndarray, hold: float, span: int) -> tuple[np
     return T, est
 
 
-def detect(log: TempLog, t_start: float, t_end: float,
-           opt: SegmentOptions = SegmentOptions()) -> Detection:
+def detect(
+    log: TempLog, t_start: float, t_end: float, opt: SegmentOptions = SegmentOptions()
+) -> Detection:
     """[t_start, t_end] (Unix) 구간의 온도를 승온/유지/하온 구간으로 분할.
     설정값(SV)이 있으면 SV 기준 (계단·램프가 깨끗함), 없으면 PV.
     앞뒤 opt.context 만큼 로그를 더 보고 판단한 뒤 잘라냄."""
@@ -220,24 +229,45 @@ def detect(log: TempLog, t_start: float, t_end: float,
 
     segs = []
     for c, a, b, a2, b2 in clipped:
-        j = min(b, len(grid) - 1)      # 전체 구간 기준 속도
+        j = min(b, len(grid) - 1)  # 전체 구간 기준 속도
         r = (Tf[j] - Tf[a]) / (grid[j] - grid[a]) * 60.0 if grid[j] > grid[a] and c != 2 else 0.0
         e = min(b2, len(grid) - 1)
         T0, T1 = (np.nan, np.nan) if c == 2 else (Tf[a2], Tf[e])
-        segs.append(Segment(_CODE[c], float(grid[a2]), float(grid[e]), float(T0), float(T1),
-                            float(r), bool(est[a2:e + 1].any())))
+        segs.append(
+            Segment(
+                _CODE[c],
+                float(grid[a2]),
+                float(grid[e]),
+                float(T0),
+                float(T1),
+                float(r),
+                bool(est[a2 : e + 1].any()),
+            )
+        )
     return Detection(grid, T, pv, sv, est, segs)
 
 
 def to_frame(segs: list[Segment], t_ref: float, scale: float) -> pd.DataFrame:
     """구간 목록 → 표 (t_ref 기준 상대시간, scale=60 이면 분)."""
-    return pd.DataFrame([{
-        "segment": i + 1, "kind": s.kind, "label": s.label,
-        "start_kst": fmt_kst(s.t0), "end_kst": fmt_kst(s.t1),
-        "start_rel": (s.t0 - t_ref) / scale, "end_rel": (s.t1 - t_ref) / scale,
-        "duration_min": s.duration / 60.0,
-        "T_start": s.T0, "T_end": s.T1, "rate_C_per_min": s.rate, "estimated": s.estimated,
-    } for i, s in enumerate(segs)])
+    return pd.DataFrame(
+        [
+            {
+                "segment": i + 1,
+                "kind": s.kind,
+                "label": s.label,
+                "start_kst": fmt_kst(s.t0),
+                "end_kst": fmt_kst(s.t1),
+                "start_rel": (s.t0 - t_ref) / scale,
+                "end_rel": (s.t1 - t_ref) / scale,
+                "duration_min": s.duration / 60.0,
+                "T_start": s.T0,
+                "T_end": s.T1,
+                "rate_C_per_min": s.rate,
+                "estimated": s.estimated,
+            }
+            for i, s in enumerate(segs)
+        ]
+    )
 
 
 def assign(times: np.ndarray, segs: list[Segment]) -> np.ndarray:

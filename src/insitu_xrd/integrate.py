@@ -1,4 +1,5 @@
 """이미지 → 2θ 1D 프로파일 적분."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,11 +13,11 @@ from .geometry import FArray, Geometry
 
 @dataclass(frozen=True, slots=True)
 class ProfileOptions:
-    tth_bin: float = 0.02         # 2θ 빈 크기 [deg]
+    tth_bin: float = 0.02  # 2θ 빈 크기 [deg]
     region: Literal["full", "strip"] = "full"
-    strip_width: int = 10         # region="strip" 일 때 가로 중앙 폭 [px]
+    strip_width: int = 10  # region="strip" 일 때 가로 중앙 폭 [px]
     normalize: bool = False
-    min_fill: float = 0.2         # 빈 픽셀 수가 중앙값의 이 비율 미만이면 NaN (0 이면 끔)
+    min_fill: float = 0.2  # 빈 픽셀 수가 중앙값의 이 비율 미만이면 NaN (0 이면 끔)
 
 
 def strip_bounds(img_width: int, width: int) -> tuple[int, int]:
@@ -28,14 +29,16 @@ def strip_bounds(img_width: int, width: int) -> tuple[int, int]:
 @dataclass(slots=True)
 class RadialIntegrator:
     """픽셀 → 2θ 빈 인덱스를 한 번만 계산해 두고 bincount 로 빠르게 적분."""
+
     selection: NDArray[np.bool_]
     bin_index: NDArray[np.intp]
     centers: FArray
     min_fill: float
 
     @classmethod
-    def build(cls, geo: Geometry, opt: ProfileOptions, shape: tuple[int, int],
-              tth: FArray | None = None) -> RadialIntegrator:
+    def build(
+        cls, geo: Geometry, opt: ProfileOptions, shape: tuple[int, int], tth: FArray | None = None
+    ) -> RadialIntegrator:
         tth = geo.tth_map(shape) if tth is None else tth
         sel = np.ones(shape, dtype=bool)
         if opt.region == "strip":
@@ -55,7 +58,7 @@ class RadialIntegrator:
         total = np.bincount(self.bin_index[ok], weights=values[ok], minlength=n_bins)
         count = np.bincount(self.bin_index[ok], minlength=n_bins)
         with np.errstate(invalid="ignore", divide="ignore"):
-            prof = total / count          # 데이터 없는 빈(갭)은 NaN
+            prof = total / count  # 데이터 없는 빈(갭)은 NaN
         if self.min_fill > 0:
             prof[count < self.min_fill * np.median(count[count > 0])] = np.nan
         return prof

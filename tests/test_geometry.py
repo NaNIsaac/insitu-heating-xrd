@@ -39,7 +39,9 @@ def test_tth_map_flat_detector():
     expect = np.rad2deg(np.arctan(30 * GEO.pixel / GEO.sdd))
     for y, x in ((50, 80), (50, 20), (20, 50), (80, 50)):
         assert tth[y, x] == pytest.approx(expect)
-    assert tth[30, 90] == pytest.approx(np.rad2deg(np.arctan(np.hypot(40, 20) * GEO.pixel / GEO.sdd)))
+    assert tth[30, 90] == pytest.approx(
+        np.rad2deg(np.arctan(np.hypot(40, 20) * GEO.pixel / GEO.sdd))
+    )
 
 
 def test_tth_map_tilted_arm():
@@ -54,6 +56,6 @@ def test_tth_map_tilted_arm():
 
 def test_chi_map_directions():
     chi = chi_map(GEO, (101, 101))
-    assert chi[20, 50] == pytest.approx(0.0)       # straight up = scattering plane
+    assert chi[20, 50] == pytest.approx(0.0)  # straight up = scattering plane
     assert chi[50, 80] == pytest.approx(90.0)
     assert chi[50, 20] == pytest.approx(-90.0)

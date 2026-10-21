@@ -36,16 +36,22 @@ def test_regrid():
 
 def make_result() -> HeatmapResult:
     t = 1_700_000_000 + np.arange(6) * 30.0
-    fr = pd.DataFrame(dict(file=[f"f{i}.h5" for i in range(6)], time_kst=["2026-10-04 10:00:00"] * 6,
-                           time_unix=t, time_rel=(t - t[0]) / 60))
+    fr = pd.DataFrame(
+        dict(
+            file=[f"f{i}.h5" for i in range(6)],
+            time_kst=["2026-10-04 10:00:00"] * 6,
+            time_unix=t,
+            time_rel=(t - t[0]) / 60,
+        )
+    )
     return HeatmapResult(np.linspace(10, 20, 4), np.arange(24.0).reshape(6, 4), fr, "min")
 
 
 def test_heatmap_result_subset_and_nearest():
     res = make_result()
     assert res.scale == 60.0
-    assert res.nearest(1.4) == 3                          # frames every 0.5 min
+    assert res.nearest(1.4) == 3  # frames every 0.5 min
     sub = res.subset(np.array([False, False, True, True, False, True]))
     np.testing.assert_allclose(sub.trel, [0.0, 0.5, 1.5])
     np.testing.assert_array_equal(sub.intensity[:, 0], [8, 12, 20])
-    assert res.trel[2] == pytest.approx(1.0)              # original untouched
+    assert res.trel[2] == pytest.approx(1.0)  # original untouched

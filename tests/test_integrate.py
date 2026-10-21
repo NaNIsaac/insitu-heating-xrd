@@ -46,7 +46,7 @@ def test_constant_image_gives_constant_profile():
 
 def test_nan_pixels_are_ignored():
     img = ring_image()
-    img[:, 95:105] = np.nan                         # detector gap
+    img[:, 95:105] = np.nan  # detector gap
     integ = RadialIntegrator.build(GEO, ProfileOptions(tth_bin=0.05, min_fill=0), SHAPE)
     prof = integ(img)
     assert abs(integ.centers[np.nanargmax(prof)] - RING_TTH) <= 0.05

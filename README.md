@@ -282,10 +282,14 @@ from insitu_xrd import heatmap, tth_profile, Geometry
 geo = Geometry(alpha_deg=20.0)
 tth_profile.run(Path(r"Z:\...\testx1_00089.h5"), geo, show=False)
 from insitu_xrd.temperature import DEFAULT_LOG, TempLog
-res = heatmap.run(heatmap.Config(folder=Path(r"Z:\...\test2x1"), geometry=geo,
-                                 temp_log=DEFAULT_LOG, at=(10, "16:55:00")))
-res.frames                                  # 프레임별 file / time_kst / time_rel / temp_pv / temp_sv
-TempLog().at([1791100537.0])                # Unix 시각 → 온도
+
+res = heatmap.run(
+    heatmap.Config(
+        folder=Path(r"Z:\...\test2x1"), geometry=geo, temp_log=DEFAULT_LOG, at=(10, "16:55:00")
+    )
+)
+res.frames  # 프레임별 file / time_kst / time_rel / temp_pv / temp_sv
+TempLog().at([1791100537.0])  # Unix 시각 → 온도
 ```
 
 `at`: 숫자 = 첫 프레임 기준 상대시간(분), `"HH:MM:SS"` = KST 시각. 해당 프레임을 가로선으로 표시하고 그 시점 프로파일을 오른쪽 패널에 겹쳐 그림.

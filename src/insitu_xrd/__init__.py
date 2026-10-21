@@ -4,6 +4,7 @@
     from insitu_xrd import heatmap, tth_profile
     heatmap.run(heatmap.Config(folder=Path(...)))
 """
+
 from .geometry import Geometry
 
 __all__ = ["Geometry"]

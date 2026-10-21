@@ -1,14 +1,15 @@
 """진입점.
 
-    python main.py                 ← 인자 없이 실행(VS Code ▶ 버튼 포함): experiments.toml 로 실험 비교 (compare)
-    python main.py <명령> [옵션]    ← overview, compare, overlay, image ... (자세히: python main.py -h)
+python main.py                 ← 인자 없이 실행(VS Code ▶ 버튼 포함): experiments.toml 로 실험 비교 (compare)
+python main.py <명령> [옵션]    ← overview, compare, overlay, image ... (자세히: python main.py -h)
 """
+
 import sys
 
 from insitu_xrd.cli import main
 
 # 인자 없이 실행했을 때 할 일 (바꾸고 싶으면 여기만 수정)
-DEFAULT_ARGS = ["compare"]           # 예: ["compare", "다른설정.toml"], ["overview", "IGOx1", "--mpl"]
+DEFAULT_ARGS = ["compare"]  # 예: ["compare", "다른설정.toml"], ["overview", "IGOx1", "--mpl"]
 
 if __name__ == "__main__":
     args = sys.argv[1:]

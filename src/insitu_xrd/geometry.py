@@ -1,4 +1,5 @@
 """디텍터 기하 (캘리브레이션 값) 와 2θ / q / d 변환."""
+
 from dataclasses import dataclass
 
 import numpy as np
@@ -13,11 +14,12 @@ FArray = NDArray[np.float64]
 @dataclass(frozen=True, slots=True)
 class Geometry:
     """기본값은 config.py 의 캘리브레이션 블록 (내부 단위: 거리 m)."""
-    pixel: float = C.PIXEL_UM * 1e-6     # 픽셀 크기 [m]
-    sdd: float = C.SDD_MM * 1e-3         # 시료 → PONI 거리 [m]
-    xc: float = C.PONI_PX[0]             # PONI x [px]
-    yc: float = C.PONI_PX[1]             # PONI y [px]
-    alpha_deg: float = C.ALPHA_DEG       # 디텍터 암의 2θ 모터 값 [deg]
+
+    pixel: float = C.PIXEL_UM * 1e-6  # 픽셀 크기 [m]
+    sdd: float = C.SDD_MM * 1e-3  # 시료 → PONI 거리 [m]
+    xc: float = C.PONI_PX[0]  # PONI x [px]
+    yc: float = C.PONI_PX[1]  # PONI y [px]
+    alpha_deg: float = C.ALPHA_DEG  # 디텍터 암의 2θ 모터 값 [deg]
     energy_kev: float = C.ENERGY_KEV
 
     @property

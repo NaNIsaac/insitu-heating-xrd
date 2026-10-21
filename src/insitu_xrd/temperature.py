@@ -1,4 +1,5 @@
 """온도 컨트롤러 로그 CSV 병합 · 임의 시각의 온도 조회."""
+
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -10,7 +11,7 @@ import pandas as pd
 from .config import DATA_DIR
 from .io import frame_time, list_files
 
-KST = timezone(timedelta(hours=9))     # 로그의 Timestamp 는 KST (tz 표기 없음)
+KST = timezone(timedelta(hours=9))  # 로그의 Timestamp 는 KST (tz 표기 없음)
 TEMP_DIR = DATA_DIR / "temperature"
 DEFAULT_LOG = TEMP_DIR / "manual_data_20261004_x1.csv"
 
@@ -51,7 +52,9 @@ class TempLog:
             raise SystemExit(f"❌ 온도 로그 없음: {', '.join(map(str, missing))}")
         self.path, self.paths = paths[0], paths
         df = _read(paths)
-        self.t = (df["_t"].dt.tz_localize(KST) - pd.Timestamp(0, tz="UTC")).dt.total_seconds().to_numpy()
+        self.t = (
+            (df["_t"].dt.tz_localize(KST) - pd.Timestamp(0, tz="UTC")).dt.total_seconds().to_numpy()
+        )
         self.df = df.drop(columns="_t")
         self.max_gap = max_gap
         self._cols: dict[str, tuple[np.ndarray, np.ndarray]] = {}
@@ -91,7 +94,7 @@ class TempLog:
 
 def parse_time(s: str, date: str = "2026-10-04") -> float:
     """'2026-10-04 15:55:00' 또는 '15:55:00' (KST) → Unix 초. 날짜 생략 시 date."""
-    if len(s) <= 8:                      # HH:MM[:SS]
+    if len(s) <= 8:  # HH:MM[:SS]
         s = f"{date} {s}"
     return pd.Timestamp(s).tz_localize(KST).timestamp()
 
@@ -148,8 +151,14 @@ def lookup(targets: Sequence[str], csv: Path = DEFAULT_LOG, max_gap: float = 5.0
         else:
             names.append(s)
             times.append(parse_time(s, date))
-    df = pd.DataFrame({"target": names, "time_kst": [fmt_kst(t) for t in times],
-                       "temp_pv": log.at(times, PV), "temp_sv": log.at(times, SV)})
+    df = pd.DataFrame(
+        {
+            "target": names,
+            "time_kst": [fmt_kst(t) for t in times],
+            "temp_pv": log.at(times, PV),
+            "temp_sv": log.at(times, SV),
+        }
+    )
     print(f"🌡️  {log.path.name}  ({log.span[0]} ~ {log.span[1]})")
     print(df.to_string(index=False))
     return df

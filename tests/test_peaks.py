@@ -23,7 +23,7 @@ def test_fit_peak_recovers_gaussian_on_linear_background():
 
 def test_fit_peak_rejects_bad_windows():
     assert np.isnan(fit_peak(X, np.full(X.size, np.nan), 18.4).center)
-    assert np.isnan(fit_peak(X, 5 - gauss(X, 50, 18.4, 0.2), 18.4).center)    # dip, not a peak
+    assert np.isnan(fit_peak(X, 5 - gauss(X, 50, 18.4, 0.2), 18.4).center)  # dip, not a peak
 
 
 def test_detect_peaks_skips_gap():

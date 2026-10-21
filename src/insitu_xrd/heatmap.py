@@ -3,6 +3,7 @@
 적분 결과는 out/cache/ 에 저장해 두고, 폴더의 파일(개수·수정시각)과 기하·적분 옵션이 그대로면
 다시 계산하지 않음 (overview · compare · heatmap 공용).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -35,7 +36,10 @@ class PlotOptions:
     time_unit: Literal["s", "min"] = "min"
     cmap: str = "inferno"
     show: bool = True
-    clip: tuple[float, float] = (25.0, 99.7)  # overview 히트맵 색 범위 (세기 백분위). 낮출수록 대비 약함
+    clip: tuple[float, float] = (
+        25.0,
+        99.7,
+    )  # overview 히트맵 색 범위 (세기 백분위). 낮출수록 대비 약함
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,13 +48,17 @@ class Config:
     pattern: str = "*.h5"
     dset: str = DSET
     attr: str = ATTR
-    workers: int | None = None                # None = min(8, CPU 수)
+    workers: int | None = None  # None = min(8, CPU 수)
     geometry: Geometry = Geometry()
     profile: ProfileOptions = ProfileOptions()
     plot: PlotOptions = PlotOptions()
-    temp_log: Path | Sequence[Path] | None = None   # 온도 로그 CSV (여러 개면 합침, 없으면 온도 생략)
-    at: tuple[float | str, ...] = ()          # 표시할 시각: 숫자=첫 프레임 기준 상대시간(time_unit), 'HH:MM:SS'=KST 시각
-    cache: str | None = None                  # use / refresh / off (None = 전역: --cache · 환경변수 · toml)
+    temp_log: Path | Sequence[Path] | None = (
+        None  # 온도 로그 CSV (여러 개면 합침, 없으면 온도 생략)
+    )
+    at: tuple[
+        float | str, ...
+    ] = ()  # 표시할 시각: 숫자=첫 프레임 기준 상대시간(time_unit), 'HH:MM:SS'=KST 시각
+    cache: str | None = None  # use / refresh / off (None = 전역: --cache · 환경변수 · toml)
 
 
 # ═════════════════════════════ 프레임 로딩 (병렬) ═════════════════════════════
@@ -83,8 +91,15 @@ def _integrate(files: Sequence[Path], cfg: Config, shape: tuple[int, int]):
     times, profs, names = [], [], []
 
     def collect(it):
-        for p, r in tqdm(zip(files, it), total=len(files), desc="📡 적분", unit="frame",
-                         colour="cyan", dynamic_ncols=True, disable=len(files) < 16):
+        for p, r in tqdm(
+            zip(files, it),
+            total=len(files),
+            desc="📡 적분",
+            unit="frame",
+            colour="cyan",
+            dynamic_ncols=True,
+            disable=len(files) < 16,
+        ):
             if isinstance(r, str):
                 tqdm.write(f"⚠️  {r}")
                 continue
@@ -97,7 +112,9 @@ def _integrate(files: Sequence[Path], cfg: Config, shape: tuple[int, int]):
         collect(map(_process, files))
     else:
         with ProcessPoolExecutor(workers, initializer=_init_worker, initargs=(cfg, shape)) as pool:
-            collect(pool.map(_process, files, chunksize=max(1, min(16, len(files) // (4 * workers)))))
+            collect(
+                pool.map(_process, files, chunksize=max(1, min(16, len(files) // (4 * workers))))
+            )
     if not times:
         return np.empty(0), np.empty((0, 0)), np.empty(0, str)
     order = np.argsort(times, kind="stable")
@@ -108,17 +125,26 @@ def _cache_file(cfg: Config) -> Path:
     """폴더 · 기하 · 적분 옵션 → 캐시 파일 이름. 파일 목록 · 수정시각은 캐시 안에 저장해 두고 비교
     (새 파일만 늘었으면 그것만 적분해서 이어 붙임 → 측정 중에 다시 돌려도 빠름)."""
     g = cfg.geometry
-    sig = json.dumps([str(cfg.folder), cfg.pattern, [g.pixel, g.sdd, g.xc, g.yc, g.alpha_deg, g.energy_kev],
-                      asdict(cfg.profile), cfg.dset, cfg.attr], default=str)
+    sig = json.dumps(
+        [
+            str(cfg.folder),
+            cfg.pattern,
+            [g.pixel, g.sdd, g.xc, g.yc, g.alpha_deg, g.energy_kev],
+            asdict(cfg.profile),
+            cfg.dset,
+            cfg.attr,
+        ],
+        default=str,
+    )
     return CACHE_DIR / f"{cfg.folder.name}_{hashlib.md5(sig.encode()).hexdigest()[:10]}.npz"
 
 
 def _mtimes(cfg: Config, files: Sequence[Path]) -> np.ndarray:
-    mt = {e.name: e.stat().st_mtime for e in os.scandir(cfg.folder)}       # Windows 는 stat 이 공짜
+    mt = {e.name: e.stat().st_mtime for e in os.scandir(cfg.folder)}  # Windows 는 stat 이 공짜
     return np.array([mt.get(f.name, 0.0) for f in files])
 
 
-_cache_mode = CACHE_MODE          # 명령의 --cache 로 바꿈 (set_cache_mode)
+_cache_mode = CACHE_MODE  # 명령의 --cache 로 바꿈 (set_cache_mode)
 
 
 def set_cache_mode(mode: str | None) -> None:
@@ -130,7 +156,9 @@ def set_cache_mode(mode: str | None) -> None:
         raise SystemExit(f"❌ --cache {mode}: {' / '.join(CACHE_MODES)} 중 하나")
     _cache_mode = mode
     if mode != "use":
-        tqdm.write(f"🗂️  캐시: {mode} ({'다시 적분해서 덮어씀' if mode == 'refresh' else '읽지도 쓰지도 않음'})")
+        tqdm.write(
+            f"🗂️  캐시: {mode} ({'다시 적분해서 덮어씀' if mode == 'refresh' else '읽지도 쓰지도 않음'})"
+        )
 
 
 def integrate_folder(cfg: Config) -> tuple[FArray, FArray, FArray, np.ndarray]:
@@ -143,31 +171,49 @@ def integrate_folder(cfg: Config) -> tuple[FArray, FArray, FArray, np.ndarray]:
         d = dict(np.load(cache, allow_pickle=False))
         old = dict(zip(d["all_files"], d["all_mtimes"])) if "all_files" in d else {}
         now = dict(zip((f.name for f in files), mt))
-        if old and all(now.get(k) == v for k, v in old.items()):          # 지운 · 덮어쓴 파일 없음
-            new = [f for f in files if f.name not in old]                  # 새 파일 + 지난번 읽기 실패
+        if old and all(now.get(k) == v for k, v in old.items()):  # 지운 · 덮어쓴 파일 없음
+            new = [f for f in files if f.name not in old]  # 새 파일 + 지난번 읽기 실패
             if not new:
                 tqdm.write(f"📂 {cfg.folder}  ({len(files)} files)  ↺ 캐시 {cache.name}")
                 return d["tth"], d["intensity"], d["time_unix"], d["files"]
-            tqdm.write(f"📂 {cfg.folder}  ({len(files)} files)  ↺ 캐시 + 새 파일 {len(new)} 개 적분")
+            tqdm.write(
+                f"📂 {cfg.folder}  ({len(files)} files)  ↺ 캐시 + 새 파일 {len(new)} 개 적분"
+            )
             t1, Z1, n1 = _integrate(new, cfg, load_image(new[0], cfg.dset).shape)
             t = np.concatenate([d["time_unix"], t1])
             order = np.argsort(t, kind="stable")
             Z = np.vstack([d["intensity"], Z1]) if len(t1) else d["intensity"]
             res = (d["tth"], Z[order], t[order], np.concatenate([d["files"], n1])[order])
-            np.savez_compressed(cache, tth=res[0], intensity=res[1], time_unix=res[2], files=res[3],
-                                all_files=res[3], all_mtimes=np.array([now[k] for k in res[3]]))
+            np.savez_compressed(
+                cache,
+                tth=res[0],
+                intensity=res[1],
+                time_unix=res[2],
+                files=res[3],
+                all_files=res[3],
+                all_mtimes=np.array([now[k] for k in res[3]]),
+            )
             return res
     shape = load_image(files[0], cfg.dset).shape
     workers = cfg.workers or min(8, os.cpu_count() or 1)
     x = RadialIntegrator.build(cfg.geometry, cfg.profile, shape).centers
-    tqdm.write(f"📂 {cfg.folder}  ({len(files)} files, {shape[0]}×{shape[1]}, "
-               f"2θ {x[0]:.2f}–{x[-1]:.2f}°, workers={workers})")
+    tqdm.write(
+        f"📂 {cfg.folder}  ({len(files)} files, {shape[0]}×{shape[1]}, "
+        f"2θ {x[0]:.2f}–{x[-1]:.2f}°, workers={workers})"
+    )
     t, Z, names = _integrate(files, cfg, shape)
     if mode != "off":
         cache.parent.mkdir(parents=True, exist_ok=True)
-        now = dict(zip((f.name for f in files), mt))           # 읽기 실패한 파일(쓰는 중 등)은 다음에 다시
-        np.savez_compressed(cache, tth=x, intensity=Z, time_unix=t, files=names,
-                            all_files=names, all_mtimes=np.array([now[k] for k in names]))
+        now = dict(zip((f.name for f in files), mt))  # 읽기 실패한 파일(쓰는 중 등)은 다음에 다시
+        np.savez_compressed(
+            cache,
+            tth=x,
+            intensity=Z,
+            time_unix=t,
+            files=names,
+            all_files=names,
+            all_mtimes=np.array([now[k] for k in names]),
+        )
     return x, Z, t, names
 
 
@@ -212,16 +258,21 @@ def color_range(Z: FArray, clip: tuple[float, float]) -> tuple[float, float]:
 
 
 def intensity_label(cfg: Config, scaled: bool = False) -> str:
-    return ("Normalized intensity" if cfg.profile.normalize else
-            "Intensity (a.u., per-folder scaled)" if scaled else "Intensity (a.u.)")
+    return (
+        "Normalized intensity"
+        if cfg.profile.normalize
+        else "Intensity (a.u., per-folder scaled)"
+        if scaled
+        else "Intensity (a.u.)"
+    )
 
 
 # ═════════════════════════════ 결과 ═════════════════════════════
 @dataclass(slots=True)
 class HeatmapResult:
     tth: FArray
-    intensity: FArray               # (frame, 2θ)
-    frames: pd.DataFrame            # file, time_kst, time_unix, time_rel, [temp_pv, temp_sv]
+    intensity: FArray  # (frame, 2θ)
+    frames: pd.DataFrame  # file, time_kst, time_unix, time_rel, [temp_pv, temp_sv]
     time_unit: str
 
     @property
@@ -251,7 +302,11 @@ class HeatmapResult:
     def nearest(self, at: float | str) -> int:
         """at (상대시간 또는 'HH:MM:SS' KST) 에 가장 가까운 프레임 인덱스."""
         if isinstance(at, str):
-            return int(np.argmin(np.abs(self.t_unix - parse_time(at, self.frames["time_kst"].iloc[0][:10]))))
+            return int(
+                np.argmin(
+                    np.abs(self.t_unix - parse_time(at, self.frames["time_kst"].iloc[0][:10]))
+                )
+            )
         return int(np.argmin(np.abs(self.trel - at)))
 
 
@@ -261,8 +316,9 @@ def plot(res: HeatmapResult, cfg: Config) -> plt.Figure:
     x, Z, trel, fr = res.tth, res.intensity, res.trel, res.frames
     has_temp = "temp_pv" in fr
     ratios = [2.2, 0.7, 1.2] if has_temp else [2.2, 1.2]
-    fig, axes = plt.subplots(1, len(ratios), figsize=(5 * sum(ratios), 7),
-                             gridspec_kw={"width_ratios": ratios})
+    fig, axes = plt.subplots(
+        1, len(ratios), figsize=(5 * sum(ratios), 7), gridspec_kw={"width_ratios": ratios}
+    )
     ax_map, ax_prof = axes[0], axes[-1]
     at_idx = [res.nearest(t) for t in cfg.at]
     colors = plt.cm.tab10(np.arange(len(at_idx)) % 10)
@@ -271,10 +327,18 @@ def plot(res: HeatmapResult, cfg: Config) -> plt.Figure:
     lo, hi = color_range(Z, (1, 99.5))
     kw = {"norm": LogNorm(max(lo, 1e-3), hi)} if po.log_color else {"vmin": lo, "vmax": hi}
     mesh = ax_map.pcolormesh(x, trel, Z, shading="nearest", cmap=po.cmap, **kw)
-    fig.colorbar(mesh, ax=ax_map, pad=0.02, fraction=0.04,
-                 label="normalized intensity" if cfg.profile.normalize else "mean intensity")
-    ax_map.set(xlabel="2θ (deg)", ylabel=f"time ({po.time_unit}) from {fr['time_kst'].iloc[0]} KST",
-               title=f"{cfg.folder.name}  [{cfg.profile.region}]")
+    fig.colorbar(
+        mesh,
+        ax=ax_map,
+        pad=0.02,
+        fraction=0.04,
+        label="normalized intensity" if cfg.profile.normalize else "mean intensity",
+    )
+    ax_map.set(
+        xlabel="2θ (deg)",
+        ylabel=f"time ({po.time_unit}) from {fr['time_kst'].iloc[0]} KST",
+        title=f"{cfg.folder.name}  [{cfg.profile.region}]",
+    )
     ax_map.secondary_xaxis("top", functions=(geo.tth_to_q, geo.q_to_tth)).set_xlabel("q (Å⁻¹)")
 
     # 온도 vs 시간 (히트맵과 시간축 공유)
@@ -309,16 +373,26 @@ def plot(res: HeatmapResult, cfg: Config) -> plt.Figure:
 def compute(cfg: Config) -> HeatmapResult:
     x, Z, t, names = integrate_folder(cfg)
     unit = cfg.plot.time_unit
-    fr = pd.DataFrame({"file": names, "time_kst": [fmt_kst(v) for v in t], "time_unix": t,
-                       "time_rel": (t - t[0]) / (60.0 if unit == "min" else 1.0)})
+    fr = pd.DataFrame(
+        {
+            "file": names,
+            "time_kst": [fmt_kst(v) for v in t],
+            "time_unix": t,
+            "time_rel": (t - t[0]) / (60.0 if unit == "min" else 1.0),
+        }
+    )
     res = HeatmapResult(x, Z, fr, unit)
-    tqdm.write(f"⏱️  {len(fr)} frames, {fr['time_kst'].iloc[0]} ~ {fr['time_kst'].iloc[-1]} "
-               f"(총 {res.trel[-1]:.2f} {unit})")
+    tqdm.write(
+        f"⏱️  {len(fr)} frames, {fr['time_kst'].iloc[0]} ~ {fr['time_kst'].iloc[-1]} "
+        f"(총 {res.trel[-1]:.2f} {unit})"
+    )
     if cfg.temp_log:
         log = TempLog.load(cfg.temp_log)
         res.add_temperature(log)
         n = fr["temp_pv"].notna().sum()
-        tqdm.write(f"🌡️  {log.path.name} ({log.span[0]} ~ {log.span[1]}): 온도 매칭 {n}/{len(fr)} frames")
+        tqdm.write(
+            f"🌡️  {log.path.name} ({log.span[0]} ~ {log.span[1]}): 온도 매칭 {n}/{len(fr)} frames"
+        )
         if n == 0:
             tqdm.write("   ⚠️  이 실험 시간대에 온도 기록이 없음")
     return res
@@ -327,7 +401,9 @@ def compute(cfg: Config) -> HeatmapResult:
 def run(cfg: Config = Config()) -> HeatmapResult:
     res = compute(cfg)
     if cfg.at:
-        cols = [c for c in ("file", "time_kst", "time_rel", "temp_pv", "temp_sv") if c in res.frames]
+        cols = [
+            c for c in ("file", "time_kst", "time_rel", "temp_pv", "temp_sv") if c in res.frames
+        ]
         sel = res.frames.iloc[[res.nearest(t) for t in cfg.at]][cols]
         tqdm.write("\n📍 선택 시각\n" + sel.round(3).to_string(index=False))
 
@@ -337,10 +413,16 @@ def run(cfg: Config = Config()) -> HeatmapResult:
         return res
     stem = out_dir(cfg.folder.name) / f"{cfg.folder.name}_tth_heatmap"
     fig.savefig(stem.with_suffix(".png"), dpi=150)
-    np.savez(stem.with_suffix(".npz"), tth=res.tth, q=cfg.geometry.tth_to_q(res.tth),
-             time_rel=res.trel, time_unit=res.time_unit, intensity=res.intensity,
-             files=res.frames["file"].to_numpy(str),
-             **({"temp_pv": res.frames["temp_pv"].to_numpy()} if "temp_pv" in res.frames else {}))
+    np.savez(
+        stem.with_suffix(".npz"),
+        tth=res.tth,
+        q=cfg.geometry.tth_to_q(res.tth),
+        time_rel=res.trel,
+        time_unit=res.time_unit,
+        intensity=res.intensity,
+        files=res.frames["file"].to_numpy(str),
+        **({"temp_pv": res.frames["temp_pv"].to_numpy()} if "temp_pv" in res.frames else {}),
+    )
     frames_csv = stem.with_name(f"{cfg.folder.name}_frames.csv")
     res.frames.to_csv(frames_csv, index=False, encoding="utf-8-sig")
     tqdm.write(f"\n💾 {stem.with_suffix('.png')}\n💾 {stem.with_suffix('.npz')}\n💾 {frames_csv}")

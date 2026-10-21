@@ -1,4 +1,5 @@
 """단일 이미지의 가로 중앙 스트립 → 세로(픽셀) 프로파일 + 피크."""
+
 from pathlib import Path
 from typing import Literal
 
@@ -27,9 +28,15 @@ def detect_pixel_peaks(prof: FArray, prominence: float | None = None, distance: 
     return find_peaks(prof, prominence=prominence, distance=distance)
 
 
-def run(file: Path, strip_width: int = 100, reduce: Literal["mean", "sum"] = "mean",
-        prominence: float | None = 1, min_distance: int = 10,
-        save: bool | None = None, show: bool = True) -> plt.Figure:
+def run(
+    file: Path,
+    strip_width: int = 100,
+    reduce: Literal["mean", "sum"] = "mean",
+    prominence: float | None = 1,
+    min_distance: int = 10,
+    save: bool | None = None,
+    show: bool = True,
+) -> plt.Figure:
     img = load_image(file)
     prof, (x0, x1) = center_strip_profile(img, strip_width, reduce)
     peaks, props = detect_pixel_peaks(prof, prominence, min_distance)
@@ -42,8 +49,7 @@ def run(file: Path, strip_width: int = 100, reduce: Literal["mean", "sum"] = "me
     for p, pr, wd in zip(peaks, props["prominences"], widths):
         print(f"{p:>8d} {prof[p]:>12.2f} {pr:>12.2f} {wd:>10.2f}")
 
-    fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(13, 6),
-                                   gridspec_kw={"width_ratios": [1, 1.6]})
+    fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(13, 6), gridspec_kw={"width_ratios": [1, 1.6]})
     # 왼쪽: 이미지 + 스트립 위치
     vmax = np.nanpercentile(img, 99.5)
     ax0.imshow(img, cmap="viridis", vmin=0, vmax=vmax, aspect="auto")
@@ -56,8 +62,15 @@ def run(file: Path, strip_width: int = 100, reduce: Literal["mean", "sum"] = "me
     ax1.plot(y, prof, lw=1)
     ax1.plot(peaks, prof[peaks], "rx", ms=8)
     for p in peaks:
-        ax1.annotate(str(p), (p, prof[p]), textcoords="offset points",
-                     xytext=(0, 6), ha="center", fontsize=10, color="r")
+        ax1.annotate(
+            str(p),
+            (p, prof[p]),
+            textcoords="offset points",
+            xytext=(0, 6),
+            ha="center",
+            fontsize=10,
+            color="r",
+        )
     ax1.set_xlabel("y (row, px)")
     ax1.set_ylabel(f"{reduce} intensity (x={x0}–{x1 - 1})")
     ax1.set_title(f"Center strip profile (width={strip_width}px), {len(peaks)} peaks")

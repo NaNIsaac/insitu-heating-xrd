@@ -20,6 +20,7 @@ uv run main.py overview x1                    # experiment x1 in experiments.tom
 
 Python 3.14 or later, [uv](https://docs.astral.sh/uv/).
 
+<!-- test -->
 ```powershell
 git clone https://github.com/NaNIsaac/insitu-heating-xrd.git
 cd insitu-heating-xrd
@@ -31,6 +32,7 @@ fetched from GitHub (`uv sync` installs it together).
 
 Tests:
 
+<!-- test -->
 ```powershell
 uv run pytest
 ```

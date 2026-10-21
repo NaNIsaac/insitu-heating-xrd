@@ -18,6 +18,7 @@ uv run main.py overview x1                    # experiments.toml 의 실험 x1 �
 
 Python 3.14 이상, [uv](https://docs.astral.sh/uv/).
 
+<!-- test -->
 ```powershell
 git clone https://github.com/NaNIsaac/insitu-heating-xrd.git
 cd insitu-heating-xrd
@@ -29,6 +30,7 @@ GitHub 에서 받아 씀 (`uv sync` 가 같이 설치).
 
 테스트:
 
+<!-- test -->
 ```powershell
 uv run pytest
 ```

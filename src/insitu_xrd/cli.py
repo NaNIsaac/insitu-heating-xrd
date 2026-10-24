@@ -42,20 +42,22 @@ app = typer.Typer(
 
 GEO = "geometry (기본값: experiments.toml [geometry])"
 _G = Geometry()
-Alpha = Annotated[float, typer.Option(help="디텍터 암 2θ [deg]", rich_help_panel=GEO)]
-Sdd = Annotated[float, typer.Option(help="시료→PONI 거리 [mm]", rich_help_panel=GEO)]
+Alpha = Annotated[float, typer.Option(help="detector arm 2θ [deg]", rich_help_panel=GEO)]
+Sdd = Annotated[float, typer.Option(help="sample to PONI distance [mm]", rich_help_panel=GEO)]
 Poni = Annotated[
     tuple[float, float], typer.Option(metavar="X Y", help="PONI (x, y) [px]", rich_help_panel=GEO)
 ]
-Energy = Annotated[float, typer.Option(help="X-선 에너지 [keV]", rich_help_panel=GEO)]
+Energy = Annotated[float, typer.Option(help="X-ray energy [keV]", rich_help_panel=GEO)]
 Workers = Annotated[
-    int | None, typer.Option("-j", "--workers", help="병렬 프로세스 수 (기본 min(8, CPU))")
+    int | None,
+    typer.Option("-j", "--workers", help="number of parallel processes (default min(8, CPU))"),
 ]
-NoShow = Annotated[bool, typer.Option("--no-show", help="그림 창 / 브라우저 열지 않음")]
-Pattern = Annotated[str, typer.Option(help="이미지 파일 패턴")]
-Bin = Annotated[float, typer.Option("--bin", help="2θ 빈 [deg]")]
+NoShow = Annotated[bool, typer.Option("--no-show", help="do not open a figure window / browser")]
+Pattern = Annotated[str, typer.Option(help="image file pattern")]
+Bin = Annotated[float, typer.Option("--bin", help="2θ bin [deg]")]
 Config = Annotated[
-    Path | None, typer.Argument(help="설정 TOML (생략 시 프로젝트 폴더의 experiments.toml)")
+    Path | None,
+    typer.Argument(help="settings TOML (default: experiments.toml in the project folder)"),
 ]
 
 
@@ -81,69 +83,92 @@ def overview(
     paths: Annotated[
         list[Path],
         typer.Argument(
-            help="이미지 폴더 경로 (여러 개면 시간순으로 이어 붙임) [+ 온도 로그 .csv, 생략 시 자동 선택]. "
-            "experiments.toml 의 실험 이름도 가능: x1, exp2.x8"
+            help="image folder path(s), joined in time order if several [+ temperature log .csv, chosen "
+            "automatically if omitted]. An experiment name from experiments.toml also works: x1, exp2.x8"
         ),
     ],
     pattern: Pattern = "*.h5",
     workers: Workers = None,
     tth_bin: Bin = 0.02,
     normalize: Annotated[
-        bool, typer.Option("--normalize", help="프레임마다 평균 세기로 나눔")
+        bool, typer.Option("--normalize", help="divide each frame by its mean intensity")
     ] = False,
-    log: Annotated[bool, typer.Option("--log", help="log 색 스케일")] = False,
-    seconds: Annotated[bool, typer.Option("--seconds", help="시간축 단위를 초로")] = False,
-    cmap: Annotated[str, typer.Option(help="컬러맵 (예: jet, viridis)")] = "inferno",
+    log: Annotated[bool, typer.Option("--log", help="log color scale")] = False,
+    seconds: Annotated[
+        bool, typer.Option("--seconds", help="use seconds as the time unit")
+    ] = False,
+    cmap: Annotated[str, typer.Option(help="colormap (e.g. jet, viridis)")] = "inferno",
     clip: Annotated[
         tuple[float, float],
-        typer.Option(metavar="LO HI", help="히트맵 색 범위 = 세기 백분위 (대비 약하게: 1 99.5)"),
+        typer.Option(
+            metavar="LO HI",
+            help="heatmap color range as intensity percentiles (weaker contrast: 1 99.5)",
+        ),
     ] = (25.0, 99.7),
     no_segments: Annotated[
-        bool, typer.Option("--no-segments", help="승온/유지/하온 구간 표시 끄기")
+        bool, typer.Option("--no-segments", help="do not show heating / hold / cooling segments")
     ] = False,
     hold_rate: Annotated[
-        float, typer.Option(help="|dT/dt| 가 이보다 작으면 유지 구간 [°C/min]")
+        float, typer.Option(help="a segment with |dT/dt| below this is a hold [°C/min]")
     ] = 1.5,
-    min_seg: Annotated[float, typer.Option(help="이보다 짧은 구간은 무시 [s]")] = 90.0,
+    min_seg: Annotated[float, typer.Option(help="ignore segments shorter than this [s]")] = 90.0,
     no_fill: Annotated[
-        bool, typer.Option("--no-fill", help="로그 끊긴 구간을 외삽으로 추정하지 않음")
+        bool, typer.Option("--no-fill", help="do not estimate log gaps by extrapolation")
     ] = False,
     no_match: Annotated[
-        bool, typer.Option("--no-match", help="폴더 여러 개일 때 세기 수준 맞추지 않음")
+        bool,
+        typer.Option(
+            "--no-match", help="do not match intensity levels when there are several folders"
+        ),
     ] = False,
     peaks: Annotated[
         list[float] | None,
         typer.Option(
-            metavar="2θ", help="추적할 2θ 위치 직접 추가 (여러 개: --peaks 18.4 --peaks 21.4)"
+            metavar="2θ",
+            help="add 2θ positions to track directly (several: --peaks 18.4 --peaks 21.4)",
         ),
     ] = None,
-    no_track: Annotated[bool, typer.Option("--no-track", help="피크 추적 끄기")] = False,
-    level: Annotated[float, typer.Option(help="전이 기준: 정규화 면적이 이 값을 넘는 시점")] = 0.5,
+    no_track: Annotated[bool, typer.Option("--no-track", help="turn peak tracking off")] = False,
+    level: Annotated[
+        float,
+        typer.Option(
+            help="transition level: the point where the normalized area exceeds this value"
+        ),
+    ] = 0.5,
     peaks_config: Annotated[
         Path | None,
         typer.Option(
-            metavar="TOML", help="전이 온도 상자에 쓸 피크 설정 (생략 시 experiments.toml)"
+            metavar="TOML",
+            help="peak settings for the transition temperature box (default: experiments.toml)",
         ),
     ] = None,
     no_transition: Annotated[
-        bool, typer.Option("--no-transition", help="전이 온도 상자 끄기")
+        bool, typer.Option("--no-transition", help="turn the transition temperature box off")
     ] = False,
     iso: Annotated[
         bool,
         typer.Option(
             "--iso",
-            help="등온 모드 (승온→등온→하온): 상자에 T50 대신 t50 · n · k, "
-            "등온 시작·끝 표시. [[iso]] 실험 이름이면 자동",
+            help="isothermal mode (heating, hold, cooling): the box shows t50, n, k instead of T50 and "
+            "marks the hold start and end. Automatic for an [[iso]] experiment name",
         ),
     ] = False,
     keep_orphans: Annotated[
-        bool, typer.Option("--keep-orphans", help="온도 로그와 시간이 안 겹치는 이미지 블록도 표시")
+        bool,
+        typer.Option(
+            "--keep-orphans",
+            help="also show image blocks whose time does not overlap the temperature log",
+        ),
     ] = False,
     browser: Annotated[
-        bool, typer.Option("--browser", help="--no-show 여도 HTML 을 브라우저로")
+        bool, typer.Option("--browser", help="open the HTML in the browser even with --no-show")
     ] = False,
-    mpl: Annotated[bool, typer.Option("--mpl", help="브라우저 대신 matplotlib 창 두 개")] = False,
-    no_html: Annotated[bool, typer.Option("--no-html", help="인터랙티브 HTML 만들지 않음")] = False,
+    mpl: Annotated[
+        bool, typer.Option("--mpl", help="two matplotlib windows instead of the browser")
+    ] = False,
+    no_html: Annotated[
+        bool, typer.Option("--no-html", help="do not create the interactive HTML")
+    ] = False,
     no_show: NoShow = False,
     alpha: Alpha = _G.alpha_deg,
     sdd: Sdd = _G.sdd * 1e3,
@@ -195,13 +220,15 @@ def compare(
     targets: Annotated[
         list[str] | None,
         typer.Argument(
-            help="회차 이름 (예: exp2 exp3). 생략 시 [[exp]], [[exp2]] ..., [[iso]] 등 전부 차례로. "
-            ".toml 을 주면 그 설정 파일 사용"
+            help="run names (e.g. exp2 exp3). If omitted, all of [[exp]], [[exp2]] ..., [[iso]] in turn. "
+            "Giving a .toml uses that settings file"
         ),
     ] = None,
     group: Annotated[
         list[str] | None,
-        typer.Option("-g", "--group", help="회차 이름 (위치 인자와 같음, 예전 방식)"),
+        typer.Option(
+            "-g", "--group", help="run name (same as the positional argument, older style)"
+        ),
     ] = None,
     workers: Workers = None,
     no_show: NoShow = False,
@@ -231,21 +258,26 @@ def compare(
 def image(
     target: Annotated[
         str,
-        typer.Argument(help="이미지 폴더 · .h5 파일 · experiments.toml 실험 이름 (x1, exp2.x8)"),
+        typer.Argument(
+            help="image folder, .h5 file or experiments.toml experiment name (x1, exp2.x8)"
+        ),
     ],
     index: Annotated[
         int,
         typer.Argument(
-            help="폴더 안 몇 번째 파일 (0 부터, 음수는 뒤에서: -1 = 마지막). .h5 를 주면 무시"
+            help="which file in the folder (from 0, negative counts from the end: -1 = last); ignored for an .h5"
         ),
     ] = 0,
-    tth_bin: Annotated[float, typer.Option("--bin", help="펼친 이미지 2θ 칸 [deg]")] = 0.01,
-    chi_bin: Annotated[float, typer.Option(help="펼친 이미지 χ 칸 [deg]")] = 0.1,
-    log: Annotated[bool, typer.Option("--log", help="log 색 스케일")] = False,
+    tth_bin: Annotated[
+        float, typer.Option("--bin", help="2θ bin of the unwrapped image [deg]")
+    ] = 0.01,
+    chi_bin: Annotated[float, typer.Option(help="χ bin of the unwrapped image [deg]")] = 0.1,
+    log: Annotated[bool, typer.Option("--log", help="log color scale")] = False,
     clip: Annotated[
-        tuple[float, float], typer.Option(metavar="LO HI", help="색 범위 = 세기 백분위")
+        tuple[float, float],
+        typer.Option(metavar="LO HI", help="color range as intensity percentiles"),
     ] = (1.0, 99.7),
-    cmap: Annotated[str, typer.Option(help="컬러맵")] = "inferno",
+    cmap: Annotated[str, typer.Option(help="colormap")] = "inferno",
     no_show: NoShow = False,
     alpha: Alpha = _G.alpha_deg,
     sdd: Sdd = _G.sdd * 1e3,
@@ -272,19 +304,25 @@ def image(
 def profile(
     target: Annotated[
         str,
-        typer.Argument(help="이미지 폴더 · .h5 파일 · experiments.toml 실험 이름 (x1, exp2.x8)"),
+        typer.Argument(
+            help="image folder, .h5 file or experiments.toml experiment name (x1, exp2.x8)"
+        ),
     ] = str(DEFAULT_FILE),
     index: Annotated[
         int,
         typer.Argument(
-            help="폴더 안 몇 번째 파일 (0 부터, 음수는 뒤에서: -1 = 마지막). .h5 를 주면 무시"
+            help="which file in the folder (from 0, negative counts from the end: -1 = last); ignored for an .h5"
         ),
     ] = 0,
-    width: Annotated[int, typer.Option(help="스트립 폭 [px]")] = 10,
+    width: Annotated[int, typer.Option(help="strip width [px]")] = 10,
     tth_bin: Bin = 0.02,
-    smooth: Annotated[int, typer.Option(help="Savitzky–Golay 창 (0=끔)")] = 7,
-    prominence: Annotated[float | None, typer.Option(help="피크 기준 (생략 시 자동)")] = None,
-    min_distance: Annotated[float, typer.Option(help="피크 간 최소 간격 [deg]")] = 0.15,
+    smooth: Annotated[int, typer.Option(help="Savitzky–Golay window (0 = off)")] = 7,
+    prominence: Annotated[
+        float | None, typer.Option(help="peak threshold (automatic if omitted)")
+    ] = None,
+    min_distance: Annotated[
+        float, typer.Option(help="minimum distance between peaks [deg]")
+    ] = 0.15,
     no_show: NoShow = False,
     alpha: Alpha = _G.alpha_deg,
     sdd: Sdd = _G.sdd * 1e3,
@@ -315,21 +353,28 @@ def profile(
 def heatmap(
     target: Annotated[
         str,
-        typer.Argument(help="이미지 폴더 또는 experiments.toml 실험 이름 (폴더 여러 개면 마지막)"),
+        typer.Argument(
+            help="image folder or experiments.toml experiment name (the last one if several folders)"
+        ),
     ] = str(DEFAULT_FOLDER),
     watch: Annotated[
         float,
-        typer.Option(metavar="SEC", help="SEC 초마다 새 파일 반영 (측정 중 확인). 0 = 한 번만"),
+        typer.Option(
+            metavar="SEC",
+            help="pick up new files every SEC seconds (to monitor a measurement); 0 = once",
+        ),
     ] = 0,
     recent: Annotated[
         float,
         typer.Option(
-            metavar="MIN", help="최근 MIN 분 동안의 면적 변화 % 표시 (0 근처 = 포화 = 상변이 끝)"
+            metavar="MIN",
+            help="show the area change over the last MIN minutes in % (near 0 = saturated = transition done)",
         ),
     ] = 5.0,
-    cmap: Annotated[str, typer.Option(help="컬러맵")] = "inferno",
+    cmap: Annotated[str, typer.Option(help="colormap")] = "inferno",
     clip: Annotated[
-        tuple[float, float], typer.Option(metavar="LO HI", help="히트맵 색 범위 = 세기 백분위")
+        tuple[float, float],
+        typer.Option(metavar="LO HI", help="heatmap color range as intensity percentiles"),
     ] = (25.0, 99.7),
     workers: Workers = None,
     no_show: NoShow = False,
@@ -369,11 +414,11 @@ def overlay(
     names: Annotated[
         list[str],
         typer.Argument(
-            help="experiments.toml 의 실험 이름 여러 개, 회차 상관없이 (예: exp.x1 exp2.x1 x8)"
+            help="several experiment names from experiments.toml, from any run (e.g. exp.x1 exp2.x1 x8)"
         ),
     ],
     config: Annotated[
-        Path | None, typer.Option(help="설정 TOML (생략 시 experiments.toml)")
+        Path | None, typer.Option(help="settings TOML (default: experiments.toml)")
     ] = None,
     workers: Workers = None,
     no_show: NoShow = False,
@@ -395,16 +440,22 @@ def avrami(
     targets: Annotated[
         list[str] | None,
         typer.Argument(
-            help="분석할 회차 (여러 개 가능: iso iso2). 생략 시 iso 로 시작하는 회차 전부 한꺼번에 "
-            "(온도가 다른 회차끼리도 Ea). exp2 처럼 승온 회차도 가능 (시험용). .toml 을 주면 그 설정 파일"
+            help="runs to analyze (several allowed: iso iso2). If omitted, all runs starting with iso at once "
+            "(Ea even across runs with different temperatures). A heating run such as exp2 also works "
+            "(for testing). Giving a .toml uses that settings file"
         ),
     ] = None,
     group: Annotated[
-        str | None, typer.Option("-g", "--group", help="회차 이름 (위치 인자와 같음, 예전 방식)")
+        str | None,
+        typer.Option(
+            "-g", "--group", help="run name (same as the positional argument, older style)"
+        ),
     ] = None,
     only: Annotated[
         list[str] | None,
-        typer.Option(metavar="NAME", help="이 이름(또는 sample)만 (여러 개: --only x1 --only x2)"),
+        typer.Option(
+            metavar="NAME", help="only this name (or sample) (several: --only x1 --only x2)"
+        ),
     ] = None,
     workers: Workers = None,
     no_show: NoShow = False,
@@ -435,20 +486,26 @@ def avrami(
 def profiles(
     names: Annotated[
         list[str],
-        typer.Argument(help="experiments.toml 의 실험 이름 여러 개 (예: exp2.x1 exp2.x2 x8)"),
+        typer.Argument(
+            help="several experiment names from experiments.toml (e.g. exp2.x1 exp2.x2 x8)"
+        ),
     ],
     T: Annotated[
         list[float] | None,
         typer.Option(
-            "-T", "--temp", help="볼 온도 [°C] (여러 개: -T 350 -T 450). 생략 시 300 400 500 700"
+            "-T",
+            "--temp",
+            help="temperatures to show [°C] (several: -T 350 -T 450); default 300 400 500 700",
         ),
     ] = None,
     no_end: Annotated[
-        bool, typer.Option("--no-end", help="냉각 후 마지막 프레임(end) 줄 빼기")
+        bool, typer.Option("--no-end", help="leave out the last-frame (end) row after cooling")
     ] = False,
-    tol: Annotated[float, typer.Option(help="온도 ± 이 범위의 프레임 평균 [°C]")] = 3.0,
+    tol: Annotated[
+        float, typer.Option(help="average the frames within ± this range of the temperature [°C]")
+    ] = 3.0,
     config: Annotated[
-        Path | None, typer.Option(help="설정 TOML (생략 시 experiments.toml)")
+        Path | None, typer.Option(help="settings TOML (default: experiments.toml)")
     ] = None,
     workers: Workers = None,
     no_show: NoShow = False,
@@ -475,11 +532,11 @@ def profiles(
 # legacy single-folder / single-image commands: hidden from help, still working
 @app.command(hidden=True)
 def center(
-    file: Annotated[Path, typer.Argument(help=".h5 이미지")] = DEFAULT_FILE,
-    width: Annotated[int, typer.Option(help="스트립 폭 [px]")] = 100,
+    file: Annotated[Path, typer.Argument(help=".h5 image")] = DEFAULT_FILE,
+    width: Annotated[int, typer.Option(help="strip width [px]")] = 100,
     reduce: Reduce = Reduce.mean,
-    prominence: Annotated[float, typer.Option(help="음수면 자동 (3σ)")] = 1.0,
-    min_distance: Annotated[int, typer.Option(help="피크 간 최소 간격 [px]")] = 10,
+    prominence: Annotated[float, typer.Option(help="negative means automatic (3σ)")] = 1.0,
+    min_distance: Annotated[int, typer.Option(help="minimum distance between peaks [px]")] = 10,
     no_show: NoShow = False,
 ):
     """Horizontal center strip of one image to a vertical pixel profile with peaks."""
@@ -497,7 +554,7 @@ def center(
 
 @app.command(hidden=True)
 def timing(
-    folder: Annotated[Path, typer.Argument(help="이미지 폴더")] = DEFAULT_FOLDER,
+    folder: Annotated[Path, typer.Argument(help="image folder")] = DEFAULT_FOLDER,
     pattern: Pattern = "*.h5",
 ):
     """File creation time vs EPICS acquisition time, written to CSV."""
@@ -510,10 +567,13 @@ def timing(
 def cache(
     match: Annotated[
         str | None,
-        typer.Argument(help="폴더 이름에 이 글자가 들어간 캐시만 (예: IGOx8). 생략 시 전부"),
+        typer.Argument(
+            help="only caches whose folder name contains this text (e.g. IGOx8); all if omitted"
+        ),
     ] = None,
     clear: Annotated[
-        bool, typer.Option("--clear", help="해당 캐시 파일 삭제 (다음 실행 때 다시 적분)")
+        bool,
+        typer.Option("--clear", help="delete those cache files (integrated again on the next run)"),
     ] = False,
 ):
     """List or delete the integration cache (out/cache). Every command also accepts --refresh, --no-cache and --cache MODE."""
@@ -542,10 +602,12 @@ def cache(
 def temp(
     targets: Annotated[
         list[str],
-        typer.Argument(help="'HH:MM:SS' 또는 'YYYY-MM-DD HH:MM:SS' (KST), .h5 파일, h5 폴더"),
+        typer.Argument(help="'HH:MM:SS' or 'YYYY-MM-DD HH:MM:SS' (KST), .h5 file or h5 folder"),
     ],
-    csv: Annotated[Path, typer.Option(help="온도 로그 CSV")] = DEFAULT_LOG,
-    max_gap: Annotated[float, typer.Option(help="로그 샘플과 이보다 멀면 NaN [s]")] = 5.0,
+    csv: Annotated[Path, typer.Option(help="temperature log CSV")] = DEFAULT_LOG,
+    max_gap: Annotated[
+        float, typer.Option(help="NaN if farther than this from a log sample [s]")
+    ] = 5.0,
 ):
     """Look up the temperature at a given time, h5 frame or folder."""
     from . import temperature
@@ -556,9 +618,10 @@ def temp(
 @app.command("merge-temp", rich_help_panel=TOOL)
 def merge_temp(
     csvs: Annotated[
-        list[Path] | None, typer.Argument(help=f"합칠 CSV (생략 시 {TEMP_DIR / 'raw'}\\*.csv 전부)")
+        list[Path] | None,
+        typer.Argument(help=f"CSVs to merge (default: all of {TEMP_DIR / 'raw'}\\*.csv)"),
     ] = None,
-    out: Annotated[Path, typer.Option("-o", "--out", help="저장할 파일")] = DEFAULT_LOG,
+    out: Annotated[Path, typer.Option("-o", "--out", help="file to write")] = DEFAULT_LOG,
 ):
     """Merge several temperature log CSVs into one."""
     from . import temperature

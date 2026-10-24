@@ -1,4 +1,4 @@
-"""온도 컨트롤러 로그 CSV 병합 · 임의 시각의 온도 조회."""
+"""Merge temperature controller log CSVs and look up the temperature at any time."""
 
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
@@ -11,7 +11,7 @@ import pandas as pd
 from .config import DATA_DIR
 from .io import frame_time, list_files
 
-KST = timezone(timedelta(hours=9))  # 로그의 Timestamp 는 KST (tz 표기 없음)
+KST = timezone(timedelta(hours=9))  # log Timestamps are KST with no tz marker
 TEMP_DIR = DATA_DIR / "temperature"
 DEFAULT_LOG = TEMP_DIR / "manual_data_20261004_x1.csv"
 
@@ -20,7 +20,7 @@ SV = "TC Temp SV [°C]"
 
 
 def _read(csvs: Sequence[Path], source: bool = False) -> pd.DataFrame:
-    """여러 로그를 시간순으로 합침 (중복 Timestamp 제거). source=True 면 원본 파일명 열 추가."""
+    """Merge logs in time order, dropping duplicate Timestamps; source=True adds a source file column."""
     dfs = []
     for p in csvs:
         df = pd.read_csv(p, encoding="utf-8-sig")
@@ -33,7 +33,7 @@ def _read(csvs: Sequence[Path], source: bool = False) -> pd.DataFrame:
 
 
 def merge(csvs: Sequence[Path], out: Path) -> pd.DataFrame:
-    """여러 로그를 시간순으로 합치고 원본 파일명을 source 열에 남김."""
+    """Merge logs in time order, keeping the original file name in the source column."""
     df = _read(csvs, source=True).drop(columns="_t")
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, index=False, encoding="utf-8-sig")
@@ -41,9 +41,9 @@ def merge(csvs: Sequence[Path], out: Path) -> pd.DataFrame:
 
 
 class TempLog:
-    """로그를 읽어 두고 Unix 시각 배열 → 온도 를 선형보간으로 조회.
-    로그 샘플에서 max_gap [s] 넘게 떨어진 시각(기록이 끊긴 구간)은 NaN.
-    path 에 CSV 여러 개를 주면 시간순으로 합침. 같은 파일은 load() 로 한 번만 읽음."""
+    """Temperature at an array of Unix times, linearly interpolated from the log.
+    Times more than max_gap [s] from any log sample (recording gaps) are NaN.
+    Several CSVs in path are merged in time order. load() reads the same files only once."""
 
     def __init__(self, path: Path | Sequence[Path] = DEFAULT_LOG, max_gap: float = 5.0):
         paths = [Path(path)] if isinstance(path, (str, Path)) else [Path(p) for p in path]
@@ -66,7 +66,7 @@ class TempLog:
 
     @classmethod
     def load(cls, path: Path | Sequence[Path], max_gap: float = 5.0) -> "TempLog":
-        """TempLog(...) 와 같지만 같은 파일(들)은 한 번만 읽어 재사용."""
+        """Same as TempLog(...), but the same files are read once and reused."""
         paths = (Path(path),) if isinstance(path, (str, Path)) else tuple(Path(p) for p in path)
         return cls._load(tuple(p.resolve() for p in paths), max_gap)
 
@@ -75,7 +75,7 @@ class TempLog:
         return self.df["Timestamp"].iloc[0][:19], self.df["Timestamp"].iloc[-1][:19]
 
     def _column(self, column: str) -> tuple[np.ndarray, np.ndarray]:
-        """(시각, 값) — 값이 있는 샘플만. 열마다 한 번만 변환."""
+        """(times, values) of the samples that have a value; converted once per column."""
         if column not in self._cols:
             y = pd.to_numeric(self.df[column], errors="coerce").to_numpy(float)
             ok = np.isfinite(y)
@@ -93,20 +93,20 @@ class TempLog:
 
 
 def parse_time(s: str, date: str = "2026-10-04") -> float:
-    """'2026-10-04 15:55:00' 또는 '15:55:00' (KST) → Unix 초. 날짜 생략 시 date."""
+    """'2026-10-04 15:55:00' or '15:55:00' (KST) to Unix seconds; a missing date defaults to date."""
     if len(s) <= 8:  # HH:MM[:SS]
         s = f"{date} {s}"
     return pd.Timestamp(s).tz_localize(KST).timestamp()
 
 
 def fmt_kst(t: float, ms: bool = False) -> str:
-    """Unix 초 → 'YYYY-MM-DD HH:MM:SS' (KST). ms=True 면 밀리초까지."""
+    """Unix seconds to 'YYYY-MM-DD HH:MM:SS' (KST); ms=True adds milliseconds."""
     s = datetime.fromtimestamp(t, KST).strftime("%Y-%m-%d %H:%M:%S.%f")
     return s[:-3] if ms else s[:19]
 
 
 def _span(path: Path) -> tuple[float, float] | None:
-    """CSV 의 첫·마지막 Timestamp (Unix). 파일 전체를 읽지 않음."""
+    """First and last Timestamp of a CSV (Unix) without reading the whole file."""
     try:
         with open(path, encoding="utf-8-sig") as f:
             if not f.readline().startswith("Timestamp"):
@@ -122,7 +122,7 @@ def _span(path: Path) -> tuple[float, float] | None:
 
 
 def find_log(times: Sequence[float] | np.ndarray, root: Path = TEMP_DIR) -> Path | None:
-    """root 아래 CSV 중 프레임 절대시각과 가장 많이 겹치는 로그 (병합본·raw 제외). 없으면 None."""
+    """The CSV under root overlapping the most frame times (merged and raw logs excluded), or None."""
     t = np.asarray(times, float)
     best, n_best = None, 0
     for p in sorted(root.rglob("*.csv")):
@@ -135,7 +135,7 @@ def find_log(times: Sequence[float] | np.ndarray, root: Path = TEMP_DIR) -> Path
 
 
 def lookup(targets: Sequence[str], csv: Path = DEFAULT_LOG, max_gap: float = 5.0) -> pd.DataFrame:
-    """시각 문자열 / .h5 파일 / h5 폴더 → 온도 표 출력."""
+    """Print a temperature table for time strings, .h5 files or h5 folders."""
     log = TempLog(csv, max_gap)
     date = log.span[0][:10]
     names, times = [], []

@@ -1,4 +1,4 @@
-"""디텍터 기하 (캘리브레이션 값) 와 2θ / q / d 변환."""
+"""Detector geometry (calibration values) and 2θ / q / d conversion."""
 
 from dataclasses import dataclass
 
@@ -13,13 +13,13 @@ FArray = NDArray[np.float64]
 
 @dataclass(frozen=True, slots=True)
 class Geometry:
-    """기본값은 config.py 의 캘리브레이션 블록 (내부 단위: 거리 m)."""
+    """Defaults come from the calibration block in config.py (distances in m internally)."""
 
-    pixel: float = C.PIXEL_UM * 1e-6  # 픽셀 크기 [m]
-    sdd: float = C.SDD_MM * 1e-3  # 시료 → PONI 거리 [m]
+    pixel: float = C.PIXEL_UM * 1e-6  # pixel size [m]
+    sdd: float = C.SDD_MM * 1e-3  # sample to PONI distance [m]
     xc: float = C.PONI_PX[0]  # PONI x [px]
     yc: float = C.PONI_PX[1]  # PONI y [px]
-    alpha_deg: float = C.ALPHA_DEG  # 디텍터 암의 2θ 모터 값 [deg]
+    alpha_deg: float = C.ALPHA_DEG  # 2θ motor value of the detector arm [deg]
     energy_kev: float = C.ENERGY_KEV
 
     @property
@@ -27,7 +27,7 @@ class Geometry:
         return float(qg.wavelength(self.energy_kev))
 
     def tth_map(self, shape: tuple[int, int]) -> FArray:
-        """각 픽셀의 true 2θ [deg]. 이미지 위쪽이 +2θ, α=0 이면 2θ = atan(r / SDD)."""
+        """True 2θ of each pixel [deg]. The top of the image is +2θ; for α=0, 2θ = atan(r / SDD)."""
         return qg.tth_map(shape, self.pixel, self.sdd, self.xc, self.yc, self.alpha_deg)
 
     def tth_to_q(self, tth: FArray | float) -> FArray:

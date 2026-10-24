@@ -1,10 +1,14 @@
-"""시간에 따른 피크 추적 → 피크별 세기 vs 시간/온도, 나타남·사라짐 시점 (상변이 추정용).
+"""Peak tracking over time: per-peak intensity vs time/temperature and when each peak appears or
+vanishes (for estimating phase transitions).
 
-1) 프레임마다 find_peaks 로 피크 검출 (잡음 대비 prominence 기준)
-2) 이웃 프레임의 피크를 위치가 tol 이내면 같은 피크로 이어 붙임 (열팽창으로 조금씩 움직여도 따라감)
-3) 충분히 오래 보인 트랙만 남기고, 모든 프레임에서 그 위치 ±hw 창의 면적(직선 배경 제거)을 계산
-4) 전이 시점: 정규화 면적(최댓값=1)이 0.5 를 위로 넘으면 나타남, 아래로 내려가면 사라짐
-   (잡음으로 잠깐 넘나드는 건 앞뒤 min_frames 중앙값으로 걸러냄, 이미지 공백 경계를 넘어서는 판단 안 함)
+1) Detect peaks in every frame with find_peaks (prominence relative to the noise).
+2) Link peaks of neighboring frames into one track when their positions differ by less than tol
+   (follows small shifts from thermal expansion).
+3) Keep only tracks seen long enough, and compute in every frame the area of the +-hw window
+   around that position (straight-line background removed).
+4) Transition: the normalized area (maximum = 1) crossing 0.5 upward is an appearance, downward a
+   disappearance. Brief noisy crossings are filtered with the median of min_frames on each side,
+   and no decision spans a gap in the images.
 """
 
 from __future__ import annotations
@@ -19,32 +23,34 @@ from scipy.signal import find_peaks
 from scipy.stats import linregress, theilslopes
 
 from .heatmap import beam_ok
-from .style import TRACK_COLORS  # noqa: F401  (tk.TRACK_COLORS 로도 씀)
+from .style import TRACK_COLORS  # noqa: F401  (also used as tk.TRACK_COLORS)
 
 
 @dataclass(frozen=True, slots=True)
 class TrackOptions:
-    snr: float = 6.0  # prominence ≥ snr × 잡음
-    rel: float = 0.03  # prominence ≥ rel × 프로파일 범위
-    tol: float = 0.12  # 이웃 프레임 간 같은 피크로 볼 위치 차 [deg]
-    max_skip: int = 4  # 이만큼 프레임 동안 안 보여도 같은 트랙 유지
-    min_frames: int = 5  # 최소 검출 프레임 수 (또는 전체의 3 %)
+    snr: float = 6.0  # prominence >= snr x noise
+    rel: float = 0.03  # prominence >= rel x profile range
+    tol: float = 0.12  # largest position difference between neighboring frames still treated as the same peak [deg]
+    max_skip: int = 4  # the track survives this many frames without a detection
+    min_frames: int = 5  # minimum detected frames (or 3 % of all)
     max_tracks: int = 6
-    manual: tuple[float, ...] = ()  # 직접 지정한 2θ 위치 (고정 창)
-    level: float = 0.5  # 전이 기준: 정규화 면적(최댓값=1)이 이 값을 넘는/내려가는 시점
+    manual: tuple[float, ...] = ()  # 2θ positions given directly (fixed window)
+    # transition level: the normalized area (maximum = 1) crossing this value up or down
+    level: float = 0.5
 
 
 @dataclass(slots=True)
 class Track:
     name: str
-    pos: np.ndarray  # 프레임별 피크 위치 [deg] (검출 없는 프레임은 보간/연장)
-    hw: float  # 적분 창 반폭 [deg]
-    detected: np.ndarray  # bool, 프레임별 검출 여부
+    pos: np.ndarray  # peak position per frame [deg] (interpolated/extended where not detected)
+    hw: float  # integration window half-width [deg]
+    detected: np.ndarray  # bool, detected per frame
     area: np.ndarray = field(default_factory=lambda: np.empty(0))
-    events: list[tuple[str, int]] = field(default_factory=list)  # ("appears"|"vanishes", 프레임)
+    events: list[tuple[str, int]] = field(default_factory=list)  # ("appears"|"vanishes", frame)
     manual: bool = False
-    level: float = 0.5  # 전이 기준 (정규화 면적)
-    t50: float = np.nan  # experiments.toml 피크와 맞으면 compare 방식 T50 (승온, X=0.5)
+    level: float = 0.5  # transition level (normalized area)
+    # T50 as computed by compare (heating, X=0.5) when matched to an experiments.toml peak
+    t50: float = np.nan
 
     @property
     def center(self) -> float:
@@ -61,7 +67,7 @@ def _filled(prof: np.ndarray, x: np.ndarray) -> np.ndarray | None:
 
 
 def _detect(x: np.ndarray, Z: np.ndarray, valid: np.ndarray, opt: TrackOptions):
-    """프레임별 (위치, 반폭) 목록."""
+    """List of (position, half-width) per frame."""
     dx = x[1] - x[0]
     out = []
     for prof, ok_frame in zip(Z, valid):
@@ -105,7 +111,7 @@ def _link(dets, opt: TrackOptions, n: int) -> list[dict]:
 
 
 def window_area(x: np.ndarray, prof: np.ndarray, c: float, hw: float) -> float:
-    """c ± hw 창의 면적, 창 양끝을 잇는 직선을 배경으로 뺌."""
+    """Area of the c +- hw window, with the line joining the window ends subtracted as background."""
     m = (x >= c - hw) & (x <= c + hw)
     if m.sum() < 5:
         return np.nan
@@ -124,16 +130,16 @@ def window_area(x: np.ndarray, prof: np.ndarray, c: float, hw: float) -> float:
 def track(
     x: np.ndarray, Z: np.ndarray, breaks: np.ndarray, opt: TrackOptions = TrackOptions()
 ) -> list[Track]:
-    """breaks: bool (프레임), True = 그 프레임 앞에 이미지 공백/폴더 경계가 있음.
-    면적은 그 피크가 한 번이라도 검출된 블록(공백 사이 구간) 안에서만 계산."""
+    """breaks: bool per frame, True = an image gap or folder boundary precedes that frame.
+    The area is computed only inside blocks (stretches between gaps) where the peak was detected at least once."""
     n = len(Z)
     block = np.cumsum(breaks)
     valid = beam_ok(Z, block)
     raw = _link(_detect(x, Z, valid, opt), opt, n)
-    # 변화가 큰(=정보가 많은) 트랙 우선, 같은 위치 중복 제거
+    # longest tracks first so duplicates at the same position are dropped
     raw.sort(key=lambda t: -len(t["frames"]))
     kept: list[dict] = []
-    for t in raw:  # 위치가 가깝고 시간도 겹치는 트랙이 이미 있으면 버림
+    for t in raw:  # drop if a track close in position and overlapping in time is already kept
         c, a, b = np.median(t["pos"]), t["frames"][0], t["frames"][-1]
         if all(
             abs(c - np.median(k["pos"])) > 2 * opt.tol or b < k["frames"][0] or a > k["frames"][-1]
@@ -145,7 +151,8 @@ def track(
     out: list[Track] = []
     for t in kept:
         fr = np.array(t["frames"])
-        pos = np.interp(np.arange(n), fr, t["pos"])  # 검출 밖은 처음/끝 위치로 연장
+        # outside the detections, hold the first/last position
+        pos = np.interp(np.arange(n), fr, t["pos"])
         hw = float(np.clip(2.0 * np.median(t["hw"]), 0.1, 0.35))
         det = np.zeros(n, bool)
         det[fr] = True
@@ -171,15 +178,16 @@ def track(
 
 
 def norm_area(area: np.ndarray) -> np.ndarray:
-    """최댓값 = 1 로 정규화한 면적 (그래프와 같은 기준)."""
+    """Area normalized to a maximum of 1 (the same scale as the graphs)."""
     mx = np.nanmax(np.abs(area)) if np.isfinite(area).any() else np.nan
     return area / mx if mx else area
 
 
 def crossings(v: np.ndarray, level: float, m: int, full: bool = True):
-    """v 가 level 을 넘나드는 지점 j (v[j-1] → v[j]) 와 방향 'appears'(위로) / 'vanishes'(아래로).
-    잡음으로 잠깐 넘나드는 건 무시: 3점 중앙값으로 넘나든 곳 중 앞 m 개 중앙값은 기준 아래,
-    뒤 m 개 중앙값은 기준 위 (아래로는 반대). full=True 면 앞뒤 m 개가 다 있어야 함."""
+    """Points j (v[j-1] to v[j]) where v crosses level, with direction 'appears' (up) or 'vanishes' (down).
+    Brief noisy crossings are ignored: of the crossings of the 3-point median, only those where the
+    median of the m values before is below the level and of the m values after is above it count
+    (reversed for downward). full=True requires m values on both sides."""
     above = median_filter(v, size=3, mode="nearest") >= level
     for j in np.flatnonzero(above[1:] != above[:-1]) + 1:
         if full and (j < m or j + m > len(v)):
@@ -192,7 +200,7 @@ def crossings(v: np.ndarray, level: float, m: int, full: bool = True):
 
 
 def level_temperature(T: np.ndarray, X: np.ndarray, level: float, m: int = 5) -> float:
-    """X 가 level 을 처음 위로 넘는 온도 (T50). 잠깐 튀는 건 무시, 앞뒤 프레임 사이 선형보간."""
+    """Temperature (T50) at which X first crosses level upward; brief spikes ignored, linear interpolation between the frames around it."""
     ok = np.isfinite(T) & np.isfinite(X)
     T, X = T[ok], X[ok]
     if len(X) < 2 * m:
@@ -206,7 +214,7 @@ def level_temperature(T: np.ndarray, X: np.ndarray, level: float, m: int = 5) ->
 
 
 def _first_cross(T: np.ndarray, X: np.ndarray, level: float) -> float:
-    """단조 증가 X 가 level 을 처음 넘는 T (선형 보간)."""
+    """T where a monotonically increasing X first crosses level (linear interpolation)."""
     j = np.flatnonzero(X >= level)
     if not len(j) or j[0] == 0:
         return np.nan
@@ -226,15 +234,20 @@ def transition_point(
     n_end: int = 10,
     iters: int = 8,
 ) -> dict:
-    """계단 모양 신호 A(T) 의 전이점 — 데이터가 정하는 창만 써서 바깥 아웃라이어·드리프트·범위 선택에 둔감.
+    """Transition point of a step-shaped signal A(T). Only a window set by the data is used, so it is
+    insensitive to outliers outside, drift and the choice of range.
 
-    1) 처음/끝 n_end 중앙값으로 대략 정규화 → isotonic(단조) 회귀 = 누적 곡선.
-       그 0.5 지점 = 중심 c, 0.25–0.75 지점 사이 = 폭 w
-    2) 창 [c − K·w, c + K·w]. 바깥 꼬리 [c ± 1.5w … c ± K·w] 에 Theil–Sen 직선 → 전·후 배경 (국소 정규화)
-    3) 코어 |T − c| ≤ w 의 정규화값을 직선 회귀 → level 교차 = T50 (오차 = x절편 표준오차)
-    4) 새 c, w 로 2–3 반복 (수렴까지)
-    창 크기는 전이 폭에 비례 (K=3 이면 시그모이드의 ~0.1 %–99.9 %) → 사람이 정한 범위가 아님.
-    반환: T50, err, width(ΔT₂₅₋₇₅), a0/a1 (T50 에서의 전·후 배경값), window, ok."""
+    1) Normalize roughly with the medians of the first/last n_end points, then isotonic
+       (monotone) regression gives a cumulative curve. Its 0.5 point is the center c and the
+       distance between the 0.25 and 0.75 points is the width w.
+    2) Window [c - K*w, c + K*w]. A Theil-Sen line on each outer tail [c +- 1.5w ... c +- K*w]
+       gives the before/after background (local normalization).
+    3) A line regression of the normalized values in the core |T - c| <= w; its crossing of level
+       is T50 (error = standard error of the x intercept).
+    4) Repeat 2-3 with the new c, w until converged.
+    The window scales with the transition width (K=3 spans about 0.1 %-99.9 % of a sigmoid), so
+    no human-chosen range is involved.
+    Returns T50, err, width (dT 25-75), a0/a1 (background before/after at T50), window, ok."""
     out = dict(
         T50=np.nan,
         err=np.nan,
@@ -260,7 +273,7 @@ def transition_point(
         return out
     dT = float(np.median(np.diff(T))) or 1e-6
     for _ in range(iters):
-        w = max(w, 3 * dT)  # 코어에 최소 몇 프레임은 들어오게
+        w = max(w, 3 * dT)  # keep at least a few frames in the core
         pre = (T >= c - K * w) & (T <= c - 1.5 * w)
         post = (T >= c + 1.5 * w) & (T <= c + K * w)
         core = np.abs(T - c) <= w
@@ -306,8 +319,8 @@ def transition_point(
 
 
 def normalize_step(T: np.ndarray, A: np.ndarray, tp: dict) -> np.ndarray:
-    """transition_point 의 전·후 배경 직선으로 정규화: X = (A − 전(T)) / (후(T) − 전(T)).
-    창 밖에서는 배경을 창 끝 값으로 고정 (직선을 멀리 외삽하지 않음)."""
+    """Normalize with the before/after background lines of transition_point: X = (A - pre(T)) / (post(T) - pre(T)).
+    Outside the window the background is held at its value at the window edge (the lines are not extrapolated far)."""
     Tc = np.clip(T, *tp["window"])
     (sp, ip), (sq, iq) = tp["pre"], tp["post"]
     lo, hi = ip + sp * Tc, iq + sq * Tc
@@ -316,8 +329,8 @@ def normalize_step(T: np.ndarray, A: np.ndarray, tp: dict) -> np.ndarray:
 
 
 def _crossings(area: np.ndarray, block: np.ndarray, opt: TrackOptions) -> list[tuple[str, int]]:
-    """정규화 면적이 opt.level 을 위로 넘는 프레임 = 나타남, 아래로 내려가는 프레임 = 사라짐.
-    블록(이미지 공백 사이) 안에서만 판단, 같은 방향이 연달아 나오면 첫 번째만."""
+    """Frames where the normalized area crosses opt.level upward (appears) or downward (vanishes).
+    Judged only inside blocks (between image gaps); repeated crossings in the same direction keep the first."""
     an = norm_area(area)
     events: list[tuple[str, int]] = []
     for b in np.unique(block):
@@ -331,8 +344,7 @@ def _crossings(area: np.ndarray, block: np.ndarray, opt: TrackOptions) -> list[t
 
 
 def label(tr: Track, temp: np.ndarray) -> str:
-    """범례용: 'P1 18.40° ↑374 °C' (정규화 면적이 level 을 넘은 ↑ / 내려간 ↓ 온도),
-    한 번도 안 넘나들면 '(no crossing)'."""
+    """Legend text such as 'P1 18.40° ↑374 °C' (temperature where the normalized area rose above ↑ or fell below ↓ the level), or '(no crossing)' if it never crossed."""
     s = f"{tr.name} {tr.center:.2f}°"
     if tr.manual:
         s += " (manual)"
@@ -348,7 +360,7 @@ def label(tr: Track, temp: np.ndarray) -> str:
 
 
 def to_frames(tracks: list[Track], frames: pd.DataFrame) -> pd.DataFrame:
-    """프레임별 피크 위치·면적 표."""
+    """Table of peak position and area per frame."""
     df = frames[["file", "time_kst", "time_rel"]].copy()
     for c in ("temp_profile", "temp_pv", "segment"):
         if c in frames:

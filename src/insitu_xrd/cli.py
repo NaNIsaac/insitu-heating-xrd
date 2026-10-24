@@ -1,25 +1,25 @@
-"""승온 in-situ 2D XRD 분석 (insitu-xrd).
+"""Heating in-situ 2D XRD analysis (insitu-xrd).
 
-이미지 폴더 · 파일은 실제 경로를 그대로 적음 (자동으로 찾지 않음).
-실험 이름 (x1, exp2.x8) 은 experiments.toml 에서 찾음.
+Write image folders and files as their real paths (they are not searched for).
+Experiment names (x1, exp2.x8) are looked up in experiments.toml.
 
-결과물 저장 — 기본은 저장 안 함 (그림 · 브라우저만). 모든 명령, 어느 위치에나:
-
-
-  --save           out/ 아래에 PNG · CSV · HTML 저장
-  --save-dir DIR   DIR 아래에 저장
-  기본값 바꾸기: 환경변수 INSITU_XRD_SAVE=1 또는 experiments.toml [options] save = true
-
-적분 캐시 (out/cache) — 모든 명령, 어느 위치에나:
+Saving results: off by default (figures and browser only). Any command, anywhere:
 
 
-  --refresh        무조건 다시 적분하고 캐시 덮어씀
-  --no-cache       캐시를 읽지도 쓰지도 않음
-  --cache MODE     use (기본) / refresh / off
-  기본값 바꾸기: 환경변수 INSITU_XRD_CACHE 또는 experiments.toml [options] cache = "refresh"
-  목록 / 삭제: uv run main.py cache [폴더이름] [--clear]
+  --save           save PNG, CSV and HTML under out/
+  --save-dir DIR   save under DIR
+  Change the default: environment variable INSITU_XRD_SAVE=1 or experiments.toml [options] save = true
 
-명령별 옵션은 `uv run main.py <명령> --help`.
+Integration cache (out/cache). Any command, anywhere:
+
+
+  --refresh        always integrate again and overwrite the cache
+  --no-cache       neither read nor write the cache
+  --cache MODE     use (default) / refresh / off
+  Change the default: environment variable INSITU_XRD_CACHE or experiments.toml [options] cache = "refresh"
+  List / delete: uv run main.py cache [folder name] [--clear]
+
+Per-command options: `uv run main.py <command> --help`.
 """
 
 from enum import Enum
@@ -40,7 +40,6 @@ app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
-# ─────────────────────────── 여러 명령이 같이 쓰는 옵션 ───────────────────────────
 GEO = "geometry (기본값: experiments.toml [geometry])"
 _G = Geometry()
 Alpha = Annotated[float, typer.Option(help="디텍터 암 2θ [deg]", rich_help_panel=GEO)]
@@ -77,7 +76,6 @@ class Region(str, Enum):
 MAIN, MORE, TOOL = "주요 분석", "추가 분석", "도구"
 
 
-# ─────────────────────────── 주요 분석 ───────────────────────────
 @app.command(rich_help_panel=MAIN)
 def overview(
     paths: Annotated[
@@ -152,7 +150,7 @@ def overview(
     poni: Poni = (_G.xc, _G.yc),
     energy: Energy = _G.energy_kev,
 ):
-    """폴더(들) + 온도 로그 → 온도 · 2θ 히트맵 · 구간 · 피크 추적 한 장 (Origin 스타일 + HTML)."""
+    """Folder(s) plus temperature log to one figure: temperature, 2θ heatmap, segments and peak tracking (Origin style plus HTML)."""
     from . import heatmap as hm
     from . import overview as ov
     from .integrate import ProfileOptions
@@ -173,7 +171,7 @@ def overview(
             show=not no_show,
             clip=clip,
         ),
-        temp_log=csvs or None,  # 로그 없으면 overview 가 자동 선택
+        temp_log=csvs or None,  # without a log, overview picks one automatically
     )
     ov.run(
         cfg,
@@ -212,7 +210,7 @@ def compare(
     poni: Poni = (_G.xc, _G.yc),
     energy: Energy = _G.energy_kev,
 ):
-    """실험 회차별: 피크별 결정화 분율 X vs 온도 + T50 (회차마다 브라우저 창 하나)."""
+    """Per run: crystallized fraction X vs temperature for each peak, with T50 (one browser window per run)."""
     from . import compare as cmp
 
     targets = targets or []
@@ -229,7 +227,7 @@ def compare(
     )
 
 
-@app.command(rich_help_panel=MAIN, context_settings={"ignore_unknown_options": True})  # -1 = 마지막
+@app.command(rich_help_panel=MAIN, context_settings={"ignore_unknown_options": True})  # -1 = last
 def image(
     target: Annotated[
         str,
@@ -254,7 +252,7 @@ def image(
     poni: Poni = (_G.xc, _G.yc),
     energy: Energy = _G.energy_kev,
 ):
-    """h5 한 장: 원본 디텍터 이미지 | 2θ–χ 로 펼친 이미지 + 2θ 프로파일 (마우스 위치에 2θ · χ 표시)."""
+    """One h5 image: raw detector image | image unwrapped to 2θ–χ plus the 2θ profile (hover shows 2θ and χ)."""
     from . import image as im
 
     im.run(
@@ -270,7 +268,7 @@ def image(
     )
 
 
-@app.command(rich_help_panel=MAIN, context_settings={"ignore_unknown_options": True})  # -1 = 마지막
+@app.command(rich_help_panel=MAIN, context_settings={"ignore_unknown_options": True})  # -1 = last
 def profile(
     target: Annotated[
         str,
@@ -293,7 +291,7 @@ def profile(
     poni: Poni = (_G.xc, _G.yc),
     energy: Energy = _G.energy_kev,
 ):
-    """h5 한 장 → 2θ 프로파일 (중앙 띠 · 전체 링 평균) + 피크 피팅 (위치 · FWHM · d)."""
+    """One h5 image to a 2θ profile (center strip and full-ring average) with peak fits (position, FWHM, d)."""
     from . import tth_profile
     from .image import resolve
 
@@ -340,7 +338,7 @@ def heatmap(
     poni: Poni = (_G.xc, _G.yc),
     energy: Energy = _G.energy_kev,
 ):
-    """폴더 → 2θ 시간 히트맵 + 상변이 그래프 (피크 면적 · FWHM, 지금 값과 최근 변화 %). 온도 없이, 측정 중에도."""
+    """Folder to a 2θ time heatmap plus phase-transition graphs (peak area, FWHM, current value and recent change %); needs no temperature and works during a measurement."""
     from . import live
 
     folder = Path(target)
@@ -384,7 +382,7 @@ def overlay(
     poni: Poni = (_G.xc, _G.yc),
     energy: Energy = _G.energy_kev,
 ):
-    """여러 스캔의 전이를 겹쳐 보기: 온도 · X vs 시간(승온 시작 기준) · X vs 온도, 전이점 ◆ 표시."""
+    """Overlay the transitions of several scans: temperature, X vs time (from the start of heating), X vs temperature, transition points marked with diamonds."""
     from . import overlay as ov
 
     ov.run(
@@ -392,7 +390,6 @@ def overlay(
     )
 
 
-# ─────────────────────────── 추가 분석 ───────────────────────────
 @app.command(rich_help_panel=MORE)
 def avrami(
     targets: Annotated[
@@ -416,7 +413,7 @@ def avrami(
     poni: Poni = (_G.xc, _G.yc),
     energy: Energy = _G.energy_kev,
 ):
-    """X(t) 변화 → Avrami 지수 n · 속도상수 k · (등온 온도 2개 이상이면) 활성화 에너지 Ea."""
+    """From the change of X(t): Avrami exponent n, rate constant k and, with two or more isothermal temperatures, the activation energy Ea."""
     from . import avrami as av
 
     targets = targets or []
@@ -460,7 +457,7 @@ def profiles(
     poni: Poni = (_G.xc, _G.yc),
     energy: Energy = _G.energy_kev,
 ):
-    """여러 스캔의 2θ 프로파일을 같은 온도끼리 겹쳐 보기 (세기 I · 비정질 정규화 R)."""
+    """Overlay the 2θ profiles of several scans at the same temperature (intensity I and amorphous-normalized R)."""
     from . import profiles as pf
 
     pf.run(
@@ -475,7 +472,7 @@ def profiles(
     )
 
 
-# ─────────────────────────── 예전 단일 폴더 / 이미지 명령 (도움말에서 숨김, 그대로 동작) ───────────────────────────
+# legacy single-folder / single-image commands: hidden from help, still working
 @app.command(hidden=True)
 def center(
     file: Annotated[Path, typer.Argument(help=".h5 이미지")] = DEFAULT_FILE,
@@ -485,7 +482,7 @@ def center(
     min_distance: Annotated[int, typer.Option(help="피크 간 최소 간격 [px]")] = 10,
     no_show: NoShow = False,
 ):
-    """단일 이미지 가로 중앙 스트립 → 세로 픽셀 프로파일 + 피크."""
+    """Horizontal center strip of one image to a vertical pixel profile with peaks."""
     from . import center_profile
 
     center_profile.run(
@@ -503,13 +500,12 @@ def timing(
     folder: Annotated[Path, typer.Argument(help="이미지 폴더")] = DEFAULT_FOLDER,
     pattern: Pattern = "*.h5",
 ):
-    """파일 생성시각 vs EPICS 촬영시각 → CSV."""
+    """File creation time vs EPICS acquisition time, written to CSV."""
     from . import timing as tm
 
     tm.run(folder, pattern)
 
 
-# ─────────────────────────── 캐시 ───────────────────────────
 @app.command(rich_help_panel=TOOL)
 def cache(
     match: Annotated[
@@ -520,7 +516,7 @@ def cache(
         bool, typer.Option("--clear", help="해당 캐시 파일 삭제 (다음 실행 때 다시 적분)")
     ] = False,
 ):
-    """적분 캐시(out/cache) 목록 보기 / 지우기. 모든 명령에 --refresh · --no-cache · --cache MODE 도 가능."""
+    """List or delete the integration cache (out/cache). Every command also accepts --refresh, --no-cache and --cache MODE."""
     from datetime import datetime
 
     from .config import CACHE_DIR
@@ -542,7 +538,6 @@ def cache(
         print(f"🧹 {len(fs)} 개 삭제")
 
 
-# ─────────────────────────── 온도 로그 ───────────────────────────
 @app.command(rich_help_panel=TOOL)
 def temp(
     targets: Annotated[
@@ -552,7 +547,7 @@ def temp(
     csv: Annotated[Path, typer.Option(help="온도 로그 CSV")] = DEFAULT_LOG,
     max_gap: Annotated[float, typer.Option(help="로그 샘플과 이보다 멀면 NaN [s]")] = 5.0,
 ):
-    """특정 시각 / h5 프레임 / 폴더의 온도 조회."""
+    """Look up the temperature at a given time, h5 frame or folder."""
     from . import temperature
 
     temperature.lookup(targets, csv, max_gap)
@@ -565,7 +560,7 @@ def merge_temp(
     ] = None,
     out: Annotated[Path, typer.Option("-o", "--out", help="저장할 파일")] = DEFAULT_LOG,
 ):
-    """온도 로그 CSV 여러 개 → 하나로 병합."""
+    """Merge several temperature log CSVs into one."""
     from . import temperature
 
     csvs = csvs or sorted((TEMP_DIR / "raw").glob("*.csv"))
@@ -576,10 +571,9 @@ def merge_temp(
     )
 
 
-# ─────────────────────────── 도우미 ───────────────────────────
 def _overview_inputs(paths: list[Path]) -> tuple[list[Path], list[Path], bool]:
-    """overview 인자 → (이미지 폴더들, 온도 CSV 들). 없는 경로가 experiments.toml 의 실험 이름
-    (x1, exp2.x8) 이면 그 실험의 images · recipe 를 그대로 씀."""
+    """overview arguments to (image folders, temperature CSVs). A path that does not exist but is an
+    experiments.toml experiment name (x1, exp2.x8) uses that experiment's images and recipe as is."""
     from .compare import exp_names, find_exp
 
     folders, csvs, iso = [], [], False
@@ -614,8 +608,8 @@ CACHE_FLAGS = {"--refresh": "refresh", "--no-cache": "off"}
 
 
 def _pop_global_args(argv: list[str]) -> tuple[list[str], str | None, Path | None]:
-    """모든 명령 공통 옵션을 어느 위치에서든 빼냄.
-    캐시: --refresh / --no-cache / --cache use|refresh|off,  저장: --save / --save-dir DIR."""
+    """Pull the options common to all commands out of the arguments, wherever they appear.
+    Cache: --refresh / --no-cache / --cache use|refresh|off.  Saving: --save / --save-dir DIR."""
     from .config import OUT_DIR
 
     out, mode, save, it = [], None, None, iter(argv)

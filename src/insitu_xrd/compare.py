@@ -1,24 +1,31 @@
-"""여러 실험의 피크별 결정화 분율 X (정규화 면적) vs 온도 비교 + T50.
+"""Compare the crystallized fraction X (normalized area) of each peak against temperature for several
+experiments, with T50.
 
-설정 파일(TOML, 기본 experiments.toml)에 실험별 이미지 폴더 · 온도 로그(recipe) 를 적으면
+Write the image folders and temperature logs (recipe) of each experiment in the settings file
+(TOML, experiments.toml by default), then
     uv run python main.py compare [experiments.toml]
-→ 피크마다 패널 하나: 각 실험의 X vs PV 온도, 범례에 'x1  T50 401 °C'
+gives one panel per peak: X vs PV temperature of each experiment, with 'x1  T50 401 °C' in the legend.
 
-비정질 기준 나누기: R = I / I_amorphous − 1  (I_amorphous = 사용 구간 처음 n_norm 프레임 평균)
-     디텍터 가장자리 세기 감소(곱셈)와 비정질 배경이 상쇄되어 결정 피크만 봉우리로 남음
+Division by the amorphous: R = I / I_amorphous - 1, where I_amorphous is the mean of the first
+n_norm frames of the used range. The intensity falloff at the detector edge (multiplicative) and
+the amorphous background cancel, leaving only the crystalline peaks.
 
-적분 창 (실험·피크마다 자동):
-     설정의 2θ 는 '이 근처를 봐라' 는 참고값. 결정화가 끝난 마지막 n_norm 프레임의 평균 R 에서
-     참고값 ± search 안의 피크를 가우시안(+직선 배경)으로 피팅 → 중심 c, 반치폭 FWHM
-     → 창 = c ± fwhm_k × FWHM  (기본 1.5 배: 가우시안 면적의 ~99.9 %)
+Integration window (automatic per experiment and peak):
+     The 2θ in the settings is only a hint of where to look. In the mean R of the last n_norm frames,
+     after crystallization, the peak within the hint ± search is fitted with a Gaussian (plus a
+     straight background), giving the center c and FWHM.
+     Window = c +- fwhm_k * FWHM (default 1.5: about 99.9 % of the Gaussian area).
 
-X  = (A − A₀) / (A₁ − A₀)
-     A  = 위 창에서 R 의 면적 (창 양끝을 잇는 직선 배경 제거)
-     A₀ = 사용 구간 처음 n_norm 프레임의 중앙값 (전이 전), A₁ = 마지막 n_norm 프레임의 중앙값 (전이 후)
-T50 = X 가 처음으로 level(기본 0.5) 을 위로 넘는 온도 (앞뒤 프레임 사이 선형보간)
+X  = (A - A0) / (A1 - A0)
+     A  = area of R in that window (straight background through the window ends removed)
+     A0 = median of the first n_norm frames of the used range (before the transition),
+     A1 = median of the last n_norm frames (after the transition)
+T50 = temperature where X first crosses level (default 0.5) upward (linear interpolation between
+      the frames around it)
 
-이미지 폴더 · 온도 로그는 설정 파일에 적힌 경로 그대로 사용 (자동으로 찾지 않음).
-적분 결과는 out/cache/ 에 저장해 두고 이미지 폴더가 그대로면 다시 계산하지 않음.
+Image folders and temperature logs are used exactly as written in the settings file (they are
+not searched for). Integration results are cached in out/cache/ and not recomputed while the
+image folder is unchanged.
 """
 
 from __future__ import annotations
@@ -45,11 +52,11 @@ from .tracks import level_temperature, normalize_step, transition_point, window_
 
 DEFAULT_CONFIG = SETTINGS_FILE
 BASELINE_TOL = (
-    30.0  # 첫 사용 프레임이 승온 시작보다 이만큼 [°C] 넘게 늦으면 '전이 전' 기준이 없다고 봄
+    # if the first used frame is later than the start of heating by more than this [°C], there is no pre-transition reference
+    30.0
 )
 
 
-# ═════════════════════════════ 설정 ═════════════════════════════
 @dataclass(slots=True)
 class Experiment:
     name: str
@@ -58,22 +65,22 @@ class Experiment:
     start: str | None = None
     end: str | None = None
     color: str | None = None
-    group: str = ""  # 어느 [[...]] 에서 왔는지 (iso 면 overview 가 등온 모드)
+    group: str = ""  # which [[...]] it came from (overview uses isothermal mode for iso)
 
 
 @dataclass(slots=True)
 class Settings:
-    peaks: dict[str, float]  # 피크 이름 → 참고 2θ (이 근처에서 실제 피크를 찾음)
+    peaks: dict[str, float]  # peak name -> hint 2θ (the real peak is searched near it)
     exps: list[Experiment]
-    segment: str = "heat"  # "heat" = 승온 구간만, "all" = 전체
+    segment: str = "heat"  # "heat" = heating segment only, "all" = everything
     level: float = 0.5
     n_norm: int = 10
     t_range: tuple[float, float] | None = None
     tth_bin: float = 0.02
-    search: float = 0.5  # 참고 2θ ± search 안에서 피크를 찾음 [deg]
-    fwhm_k: float = 1.5  # 적분 창 = 중심 ± fwhm_k × FWHM
+    search: float = 0.5  # search for the peak within hint 2θ ± search [deg]
+    fwhm_k: float = 1.5  # integration window = center ± fwhm_k x FWHM
     path: Path = DEFAULT_CONFIG
-    group: str = "exp"  # [[exp]] / [[exp2]] / ... (실험 회차)
+    group: str = "exp"  # [[exp]] / [[exp2]] / ... (experiment run)
 
 
 def _as_list(v) -> list[str]:
@@ -81,8 +88,8 @@ def _as_list(v) -> list[str]:
 
 
 def exp_groups(raw: dict) -> list[str]:
-    """설정 파일의 실험 회차 목록 = images 가 있는 [[...]] 전부.
-    [[exp]], [[exp2]], [[exp3]] ... 번호순 먼저, 그다음 [[iso]] 같은 나머지는 파일에 적힌 순서."""
+    """Experiment runs in the settings file: every [[...]] that has images.
+    [[exp]], [[exp2]], [[exp3]] ... come first in number order, then the others such as [[iso]] in file order."""
     keys = [
         k
         for k, v in raw.items()
@@ -93,7 +100,7 @@ def exp_groups(raw: dict) -> list[str]:
 
 
 def entry_name(e: dict, i: int = 1) -> str:
-    """[[...]] 항목 이름: name, 없으면 (등온) sample_T_iso, sample, run{i}."""
+    """Name of a [[...]] entry: name, else (isothermal) sample_T_iso, sample, run{i}."""
     if e.get("name"):
         return str(e["name"])
     sample = str(e.get("sample") or f"run{i}")
@@ -103,7 +110,7 @@ def entry_name(e: dict, i: int = 1) -> str:
 def load_settings(
     path: Path = DEFAULT_CONFIG, need_exps: bool = True, group: str = "exp"
 ) -> Settings:
-    """설정 파일 읽기 (실험 목록은 [[group]]). 경로는 적힌 그대로 (상대경로면 프로젝트 폴더 기준)."""
+    """Read the settings file (experiments from [[group]]). Paths as written, relative ones against the project folder."""
     path = Path(path)
     raw = load_toml(path)
     o = raw.get("options", {})
@@ -123,7 +130,7 @@ def load_settings(
         raise SystemExit(
             f"❌ {path}: [[{group}]] 항목이 없음 (있는 회차: {', '.join(exp_groups(raw)) or '없음'})"
         )
-    # 숫자 하나 = 참고 2θ. [시작, 끝] 으로 적은 예전 형식은 가운데를 참고값으로
+    # a single number is the hint 2θ; the older [start, end] form uses its midpoint
     peaks = {
         k: float(v) if isinstance(v, (int, float)) else (float(v[0]) + float(v[1])) / 2
         for k, v in raw.get("peaks", {}).items()
@@ -147,9 +154,9 @@ def load_settings(
 
 
 def find_exp(name: str, path: Path = DEFAULT_CONFIG) -> Experiment | None:
-    """설정 파일의 실험 이름 → Experiment (overview x1 처럼 쓸 때).
-    'exp2.x8' 처럼 회차를 붙이면 그 회차에서, 아니면 첫 회차부터 찾음.
-    이름이 정확히 맞는 게 없으면 sample 로도 찾음 (iso.x1 → [[iso]] 의 sample = "x1" 인 x1_380)."""
+    """Experiment name from the settings file to an Experiment (for use like overview x1).
+    With a run prefix such as 'exp2.x8' it looks in that run, otherwise from the first run on.
+    If no name matches exactly it also looks by sample (iso.x1 finds x1_380 whose sample is "x1" in [[iso]])."""
     if not Path(path).exists():
         return None
     raw = load_toml(path)
@@ -174,7 +181,7 @@ def find_exp(name: str, path: Path = DEFAULT_CONFIG) -> Experiment | None:
 
 
 def exp_names(path: Path = DEFAULT_CONFIG) -> str:
-    """오류 메시지용: 설정 파일의 실험 이름 전부 ('exp.x1, exp2.x1, ..., iso.x1_380')."""
+    """For error messages: every experiment name in the settings file ('exp.x1, exp2.x1, ..., iso.x1_380')."""
     if not Path(path).exists():
         return ""
     raw = load_toml(path)
@@ -184,7 +191,7 @@ def exp_names(path: Path = DEFAULT_CONFIG) -> str:
 
 
 def check_paths(exps: list[Experiment]) -> None:
-    """계산 시작 전에 없는 경로를 한꺼번에 알려 줌."""
+    """Report all missing paths at once, before any computation starts."""
     missing = [f"   {e.name}: {p}" for e in exps for p in (*e.images, *e.recipe) if not p.exists()]
     if missing:
         raise SystemExit(
@@ -192,25 +199,24 @@ def check_paths(exps: list[Experiment]) -> None:
         )
 
 
-# ═════════════════════════════ 실험 하나 ═════════════════════════════
 @dataclass(slots=True)
 class ExpResult:
     name: str
-    table: pd.DataFrame  # 프레임별 file, time_kst, T_pv, kind, A_<peak>, X_<peak>
+    table: pd.DataFrame  # per frame: file, time_kst, T_pv, kind, A_<peak>, X_<peak>
     t50: dict[str, float]
     note: str = ""
     color: str = "#000000"
-    ok: bool = True  # False = 전이 전 데이터가 없어 X 를 정규화할 수 없음
+    ok: bool = True  # False = no pre-transition data, so X cannot be normalized
     windows: dict[str, tuple[float, float, float, float]] | None = (
-        None  # 피크 → (중심, FWHM, 창 시작, 끝)
+        None  # peak -> (center, FWHM, window start, end)
     )
-    trans: dict[str, dict] | None = None  # 피크 → transition_point 결과 (T50 오차 · 폭)
+    trans: dict[str, dict] | None = None  # peak -> transition_point result (T50 error, width)
 
 
 def _clip_window(
     x: np.ndarray, ok: np.ndarray, c: float, lo: float, hi: float
 ) -> tuple[float, float]:
-    """[lo, hi] 를 중심 c 에서 이어지는 ok 구간 안으로 줄임 (갭(NaN) 은 통과, 가장자리 낙하는 막음)."""
+    """Shrink [lo, hi] to the stretch of ok points connected to the center c (gaps (NaN) are crossed, falloff at the edge is not)."""
     i = int(np.clip(np.searchsorted(x, c), 0, len(x) - 1))
     a = i
     while a > 0 and ok[a - 1] and x[a - 1] >= lo:
@@ -224,8 +230,8 @@ def _clip_window(
 def peak_window(
     x: np.ndarray, prof: np.ndarray, guess: float, search: float, k: float
 ) -> tuple[float, float, float]:
-    """참고 2θ 근처 피크의 (중심, FWHM, 적분 창 반폭 = k×FWHM).
-    가우시안+직선 배경 피팅, 실패하면 반값 지점 직접 찾기."""
+    """(center, FWHM, integration half-width = k*FWHM) of the peak near the hint 2θ.
+    Gaussian plus straight background fit; if it fails, the half-maximum points are found directly."""
     fit = fit_peak(x, prof, guess, half_window=search)
     dx = x[1] - x[0]
     if (
@@ -234,7 +240,7 @@ def peak_window(
         and 2 * dx < fit.fwhm < 2 * search
     ):
         return fit.center, fit.fwhm, k * fit.fwhm
-    # 대안: 범위 양끝을 잇는 직선 배경을 빼고 최댓값의 절반이 되는 좌우 지점
+    # fallback: subtract the straight background through the range ends and take the left and right half-maximum points
     m = (np.abs(x - guess) <= search) & np.isfinite(prof)
     xs, ys = x[m], prof[m]
     if len(xs) < 6:
@@ -262,8 +268,8 @@ def frame_widths(
     a_final: float,
     min_frac: float = 0.2,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """프레임별 피크 (중심, FWHM): 가우시안 + 직선 배경 피팅. 피크가 실제로 있는 프레임
-    (면적 ≥ 최종 면적의 min_frac) 만, 나머지는 NaN. 피팅 범위 = c ± max(1.5·FWHM, 0.4°)."""
+    """Peak (center, FWHM) per frame from a Gaussian plus straight background fit. Only frames where the
+    peak really exists (area >= min_frac of the final area); the rest are NaN. Fit range is c ± max(1.5*FWHM, 0.4°)."""
     n = len(R)
     center, width = np.full(n, np.nan), np.full(n, np.nan)
     if not (np.isfinite(c) and np.isfinite(a_final) and a_final > 0):
@@ -286,13 +292,15 @@ def peak_areas(
     say=print,
     widths: bool = False,
 ):
-    """피크별 (중심, FWHM, 창 시작, 끝) · 프레임별 면적 · (widths=True 면) 프레임별 (중심, FWHM).
-    → (windows, areas, shapes)
-    base 프레임(전이 전, 비정질) 평균으로 나눔: R = I / I_amorphous − 1
-      → 디텍터 가장자리 세기 감소(곱셈 효과)와 비정질 배경이 상쇄되어 결정 피크만 깔끔한 봉우리로 남음.
-    창은 final 프레임(결정화가 끝난 상태) 평균 R 에서 [peaks] 참고값 근처 피크를 찾아 정함."""
+    """Per peak (center, FWHM, window start, end), area per frame and, with widths=True, (center, FWHM)
+    per frame. Returns (windows, areas, shapes).
+    Divided by the mean of the base frames (before the transition, amorphous): R = I / I_amorphous - 1,
+    so the intensity falloff at the detector edge (multiplicative) and the amorphous background cancel
+    and only the crystalline peaks remain as clean peaks.
+    The window is set from the mean R of the final frames (after crystallization), by finding the
+    peak near the [peaks] hint."""
     pre = time_mean(Z[base])
-    cover = np.isfinite(pre) & (pre > 0.3 * np.nanmedian(pre))  # 디텍터가 거의 안 닿는 2θ 제외
+    cover = np.isfinite(pre) & (pre > 0.3 * np.nanmedian(pre))  # skip 2θ the detector barely covers
     with np.errstate(all="ignore"):
         R = np.where(cover, Z / pre - 1.0, np.nan)
     ref = time_mean(R[final])
@@ -319,17 +327,18 @@ def peak_areas(
 
 @dataclass(slots=True)
 class Analysis:
-    use: np.ndarray  # 프레임별: 계산에 쓴 프레임 (승온 · 온도 범위 · 빔 정상)
-    kind: np.ndarray  # 프레임별 구간 종류 heat/hold/cool
-    ok: bool  # False = 전이 전 데이터가 없어 정규화 불가
+    use: np.ndarray  # per frame: used in the computation (heating, temperature range, beam on)
+    kind: np.ndarray  # segment kind per frame: heat/hold/cool
+    ok: bool  # False = no pre-transition data, cannot normalize
     msg: str
     t50: dict[str, float]
-    windows: dict[str, tuple[float, float, float, float]]  # 피크 → (중심, FWHM, 창 시작, 끝)
+    # peak -> (center, FWHM, window start, end)
+    windows: dict[str, tuple[float, float, float, float]]
     A: dict[str, np.ndarray]
     X: dict[str, np.ndarray]
-    center: dict[str, np.ndarray]  # 프레임별 피크 중심 [deg] (피크 없는 프레임 NaN)
-    fwhm: dict[str, np.ndarray]  # 프레임별 반치폭 [deg]
-    trans: dict[str, dict]  # 피크 → transition_point 결과 (T50, err, width, window ...)
+    center: dict[str, np.ndarray]  # peak center per frame [deg] (NaN where there is no peak)
+    fwhm: dict[str, np.ndarray]  # FWHM per frame [deg]
+    trans: dict[str, dict]  # peak -> transition_point result (T50, err, width, window ...)
 
 
 def analyze(
@@ -341,15 +350,14 @@ def analyze(
     st: Settings,
     verbose: bool = True,
 ) -> Analysis:
-    """프레임 프로파일 Z (시간순) + 프레임 온도 T(PV) → 피크별 X, T50. compare · overview 공용."""
+    """Frame profiles Z (in time order) plus frame temperature T (PV) to X and T50 per peak; shared by compare and overview."""
     say = print if verbose else (lambda *a, **k: None)
     has_T = np.isfinite(T)
-    # 구간 종류 (승온/유지/하온)
     kind = np.full(len(t), "", dtype=object)
     heat_T0 = np.nan
     if has_T.any():
         tt = t[has_T]
-        # 로그 전체로 감지 (프레임 범위로 자르면 승온 시작 온도를 잘못 앎)
+        # detect over the whole log; cutting to the frame range would misjudge the start temperature of heating
         det = sg.detect(log, min(tt[0], log.t[0]), max(tt[-1], log.t[-1]))
         kind = np.where(has_T, sg.kinds_at(t, det.segments), "")
         heats = [s for s in det.segments if s.kind == "heat"]
@@ -363,7 +371,8 @@ def analyze(
         use &= (T >= st.t_range[0]) & (T <= st.t_range[1])
     if use.sum() < 2 * st.n_norm:
         say(f"   ⚠️  사용할 프레임이 {use.sum()} 개뿐 (segment={st.segment}, t_range={st.t_range})")
-    use &= beam_ok(Z, use)  # 빔 꺼진 프레임 제외 (사용 프레임 세기 중앙값 기준)
+    # exclude beam-off frames (relative to the median intensity of the used frames)
+    use &= beam_ok(Z, use)
 
     ok, msg = True, ""
     if use.any():
@@ -388,12 +397,13 @@ def analyze(
     windows, As, shapes = peak_areas(
         x, Z, iu_all[: st.n_norm], iu_all[-st.n_norm :], st, say, widths=True
     )
+    # reported FWHM = per-frame fit values (of the last frames that set the window)
     for pk, (
         c,
         _,
         lo,
         hi,
-    ) in windows.items():  # 보고용 FWHM = 프레임별 피팅값 (창을 정한 마지막 프레임들)
+    ) in windows.items():
         tail = shapes[pk][1][iu_all[-st.n_norm :]]
         if np.isfinite(tail).any():
             windows[pk] = (c, float(np.nanmedian(tail)), lo, hi)
@@ -402,13 +412,16 @@ def analyze(
         X = np.full(len(A), np.nan)
         iu = np.flatnonzero(use & np.isfinite(A))
         n = min(st.n_norm, max(1, len(iu) // 4))
-        # 전이점: 전이 폭에 비례하는 창만 씀 (tracks.transition_point) — 범위 끝·먼 아웃라이어·드리프트에 둔감
+        # the transition point uses only a window proportional to the transition width (tracks.transition_point),
+        # which makes it insensitive to range ends, distant outliers and drift
         tp = (
             transition_point(T[iu], A[iu], st.level, n_end=n) if len(iu) >= 4 * n else {"ok": False}
         )
-        if tp["ok"]:  # 전이 창의 전·후 배경 직선으로 → X 곡선이 T50 에서 level
+        # normalized by the before/after background lines of the transition window, so X is at level at T50
+        if tp["ok"]:
             X[iu] = normalize_step(T[iu], A[iu], tp)
-        elif len(iu) >= 2:  # 창을 못 잡으면(전이 전후 데이터 부족) 예전 방식: 양 끝 중앙값
+        # no window (too little data around the transition): fall back to the medians of both ends
+        elif len(iu) >= 2:
             a0, a1 = np.median(A[iu[:n]]), np.median(A[iu[-n:]])
             X[iu] = (A[iu] - a0) / ((a1 - a0) or np.nan)
         Xs[pk], trans[pk] = X, tp
@@ -446,16 +459,16 @@ def analyze(
 @dataclass(slots=True)
 class ExpData:
     x: np.ndarray  # 2θ
-    Z: np.ndarray  # 세기 [frame, 2θ], 시간순
-    t: np.ndarray  # 촬영시각 Unix [frame]
+    Z: np.ndarray  # intensity [frame, 2θ], in time order
+    t: np.ndarray  # acquisition time Unix [frame]
     files: np.ndarray
-    T: np.ndarray  # 프레임 PV 온도 (로그 밖 NaN)
-    log: TempLog | None  # 온도 로그가 없으면 None
+    T: np.ndarray  # PV temperature per frame (NaN outside the log)
+    log: TempLog | None  # None if there is no temperature log
     note: str = ""
 
 
 def load_exp(exp: Experiment, st: Settings, geo: Geometry, workers: int | None) -> ExpData:
-    """실험의 이미지 폴더(들) 적분(캐시) → 시간순으로 합치고 start/end 로 자르고 온도 매칭."""
+    """Integrate (cached) the image folder(s) of an experiment, merge in time order, cut by start/end and match temperatures."""
     print(
         f"\n🧪 {exp.name}: {', '.join(str(p) for p in exp.images)}  |  "
         f"{', '.join(p.name for p in exp.recipe) or '온도 로그 없음'}"
@@ -475,7 +488,6 @@ def load_exp(exp: Experiment, st: Settings, geo: Geometry, workers: int | None) 
     order = np.argsort(t, kind="stable")
     Z, t, files = Z[order], t[order], files[order]
 
-    # 시간 범위 제한 (선택)
     keep = np.ones(len(t), bool)
     day = fmt_kst(t[0])[:10]
     if exp.start:
@@ -484,8 +496,7 @@ def load_exp(exp: Experiment, st: Settings, geo: Geometry, workers: int | None) 
         keep &= t <= parse_time(exp.end, day)
     Z, t, files = Z[keep], t[keep], files[keep]
 
-    # 온도: 로그가 실제로 있는 시각만 (바깥은 NaN)
-    if not exp.recipe:  # 온도 로그 없음 → 온도 NaN (avrami 는 그래도 n·k 계산)
+    if not exp.recipe:  # no temperature log: temperature is NaN (avrami still computes n and k)
         return ExpData(x, Z, t, files, np.full(len(t), np.nan), None, "온도 로그 없음")
     log = TempLog.load(exp.recipe)
     T = log.at(t, PV)
@@ -524,21 +535,20 @@ def run_exp(
     )
 
 
-# ═════════════════════════════ 그림 ═════════════════════════════
 def _lab(r: ExpResult, pk: str) -> str:
     t50 = r.t50[pk]
     if not np.isfinite(t50):
         return f"{r.name}  –"
     tp = (r.trans or {}).get(pk, {})
     width = f" (Δ{tp['width']:.0f})" if tp.get("ok") else ""
-    return f"{r.name}  {t50:.0f} °C{width}"  # 범례 제목: T50 (ΔT25–75)
+    return f"{r.name}  {t50:.0f} °C{width}"
 
 
 NO_BASELINE = "no pre-transition images"
 
 
 def smooth(y: np.ndarray, size: int = 7) -> np.ndarray:
-    """NaN 을 건너뛴 이동 중앙값 (FWHM 처럼 프레임마다 흔들리는 값의 추세선)."""
+    """Running median skipping NaN, a trend line for values that jitter per frame such as FWHM."""
     out = np.full(len(y), np.nan)
     ok = np.flatnonzero(np.isfinite(y))
     if len(ok) >= size:
@@ -547,16 +557,17 @@ def smooth(y: np.ndarray, size: int = 7) -> np.ndarray:
 
 
 def _fwhm_rows(r: ExpResult, pk: str) -> pd.DataFrame:
-    """FWHM vs T 에 그릴 프레임: 사용 구간(승온 · 온도 범위) 중 피크가 있는 프레임."""
+    """Frames to draw in FWHM vs T: those with a peak within the used range (heating, temperature range)."""
     d = r.table[r.table["used"]]
     return d[np.isfinite(d[f"FWHM_{pk}"])]
 
 
-LABEL_ROWS = (1.13, 1.22, 1.31)  # T50 숫자를 놓는 높이 (X 축 위쪽 여백, 가까우면 다음 줄)
+# heights for the T50 numbers (margin above the X axis; close ones go to the next row)
+LABEL_ROWS = (1.13, 1.22, 1.31)
 
 
 def _t50_marks(results: list[ExpResult], pk: str, span: float) -> list[tuple]:
-    """그릴 전이점 [(결과, T50, T25, T75, 라벨 높이)] — T50 순, 라벨이 겹치지 않게 줄 배정."""
+    """Transition points to draw, [(result, T50, T25, T75, label height)], in T50 order with rows assigned so labels do not overlap."""
     marks, last = [], {}
     for r in sorted(results, key=lambda r: r.t50.get(pk, np.inf)):
         t50 = r.t50.get(pk, np.nan)
@@ -595,7 +606,7 @@ def plot(results: list[ExpResult], st: Settings) -> plt.Figure:
                 ax.plot(
                     d["T_pv"], d[f"X_{pk}"], "-o", color=r.color, ms=3, lw=1.3, label=_lab(r, pk)
                 )
-            for r in results:  # FWHM 은 전이 전 기준이 없어도 그릴 수 있음
+            for r in results:  # FWHM can be drawn even without a pre-transition reference
                 d = _fwhm_rows(r, pk)
                 if len(d):
                     ax_w.plot(
@@ -606,7 +617,7 @@ def plot(results: list[ExpResult], st: Settings) -> plt.Figure:
             if st.t_range:
                 ax.set_xlim(*st.t_range)
             lo, hi = ax.get_xlim()
-            # 전이점: 폭(25–75 %) 음영 · 세로 점선(아래 FWHM 칸까지) · ◆ · 위쪽에 온도 숫자
+            # transition point: shaded width (25-75 %), dashed vertical line down to the FWHM panel, diamond, temperature above
             for r, t50, t25, t75, ly in _t50_marks(results, pk, hi - lo):
                 for a in (ax, ax_w):
                     if np.isfinite(t25):
@@ -635,7 +646,8 @@ def plot(results: list[ExpResult], st: Settings) -> plt.Figure:
         axes[1][0].set_ylabel("FWHM (°)\n(per-frame Gaussian fit)")
         fig.suptitle(f"[{st.group}]", x=0.01, ha="left", fontsize=16, fontweight="bold")
         fig.tight_layout()
-        for a in legend_axes:  # 그래프 안 빈 곳에 범례 (곡선 · ◆ · T50 숫자 안 가리게)
+        # legend in a free spot of the graph, not covering curves, diamonds or T50 numbers
+        for a in legend_axes:
             place_legend(
                 a,
                 fontsize=12.5,
@@ -665,7 +677,7 @@ def write_html(results: list[ExpResult], st: Settings, path: Path) -> Path:
     )
     for j, pk in enumerate(peaks, start=1):
         lg = "legend" if j == 1 else f"legend{j}"
-        for r in results:  # FWHM vs T (아래 줄)
+        for r in results:
             d = _fwhm_rows(r, pk)
             if not len(d):
                 continue
@@ -731,7 +743,7 @@ def write_html(results: list[ExpResult], st: Settings, path: Path) -> Path:
                 j,
             )
         fig.add_hline(y=st.level, line=dict(color="#999", dash="dash", width=1), row=1, col=j)
-        # 전이점: 폭(25–75 %) 음영 · 세로 점선 · ◆ (마우스 올리면 T50 ± 오차 · 폭) · 위쪽 온도 숫자
+        # transition point: shaded width (25-75 %), dashed line, diamond (hover shows T50 ± error and width), temperature above
         span = (st.t_range[1] - st.t_range[0]) if st.t_range else 300.0
         for r, t50, t25, t75, ly in _t50_marks(results, pk, span):
             tp = (r.trans or {}).get(pk, {})
@@ -809,11 +821,10 @@ def write_html(results: list[ExpResult], st: Settings, path: Path) -> Path:
     fig.update_yaxes(matches="y", row=1)
     fig.update_yaxes(title="X (normalised area)", row=1, col=1)
     fig.update_yaxes(title="FWHM (°)", row=2, col=1)
-    # 창이 커도 늘어나지 않는 크기 (피크 하나당 ~540 px) → 스샷해도 글씨 비율 일정
+    # fixed size that does not stretch in a large window (~540 px per peak), so screenshots keep the text ratio
     return write_fit_html(fig, path, 150 + 540 * len(peaks), 800)
 
 
-# ═════════════════════════════ 실행 ═════════════════════════════
 def run(
     config: Path = DEFAULT_CONFIG,
     geo: Geometry = Geometry(),
@@ -821,10 +832,11 @@ def run(
     show: bool = True,
     groups: list[str] | None = None,
 ) -> dict[str, list[ExpResult]]:
-    """실험 회차([[exp]], [[exp2]], ..., [[iso]])마다 차례로 비교 → 회차별 결과 파일 · 브라우저 창."""
+    """Compare each experiment run ([[exp]], [[exp2]], ..., [[iso]]) in turn; one result file and browser window per run."""
     raw = load_toml(config)
     groups = groups or exp_groups(raw)
-    picks = [g for g in groups if g not in raw]  # 회차가 아닌 것 = 실험 이름 (iso3.x1, x8_300 ...)
+    # anything that is not a run is an experiment name (iso3.x1, x8_300 ...)
+    picks = [g for g in groups if g not in raw]
     if picks:
         return {"pick": _run_picks(picks, config, geo, workers, show, raw)}
     unknown = [g for g in groups if g not in raw]
@@ -833,19 +845,20 @@ def run(
             f"❌ {config}: 회차 {', '.join(unknown) or '[[exp]]'} 없음 "
             f"(있는 회차: {', '.join(exp_groups(raw)) or '없음'})"
         )
-    # 같은 이름(예: x8)은 모든 회차에서 같은 색
+    # the same name (e.g. x8) gets the same color in every run
     names = list(
         dict.fromkeys(
             entry_name(e, i) for g in exp_groups(raw) for i, e in enumerate(raw[g], start=1)
         )
     )
     colors = {n: EXP_COLORS[i % len(EXP_COLORS)] for i, n in enumerate(names)}
-    for g in groups:  # 경로 확인은 계산 전에 모든 회차 한꺼번에
+    for g in groups:  # check the paths of all runs together before computing
         check_paths(load_settings(config, group=g).exps)
     out = {}
     for g in groups:
         st = load_settings(config, group=g)
-        if g.startswith("iso"):  # 등온 회차: 온도 대신 시간 (등온 시작부터) 으로 비교
+        # isothermal run: compare against time (from the hold start) instead of temperature
+        if g.startswith("iso"):
             from .avrami import compare_iso
 
             print(
@@ -865,7 +878,7 @@ def run(
 def _run_picks(
     names: list[str], config: Path, geo: Geometry, workers: int | None, show: bool, raw: dict
 ):
-    """실험 이름 여러 개 (회차 섞어도 됨) → 한 장. 전부 등온 회차면 시간 비교, 아니면 온도 비교."""
+    """Several experiment names (runs may be mixed) on one page: time comparison if all are isothermal runs, else temperature comparison."""
     from dataclasses import replace
 
     picked = []
@@ -937,6 +950,6 @@ def _run_group(
             fig.savefig(png)
         plt.close(fig)
         print(f"\n💾 {png}\n💾 {page}\n💾 {d / f'{stem}_T50.csv'}")
-    if show:  # 회차마다 새 브라우저 창
+    if show:
         webbrowser.open_new(page.resolve().as_uri())
     return results

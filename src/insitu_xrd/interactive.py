@@ -1,11 +1,13 @@
-"""overview 의 인터랙티브 HTML 판 (Plotly). 브라우저에서 확대/이동, 마우스 올리면 값 표시.
+"""Interactive HTML version of overview (Plotly): zoom and pan in the browser, values on hover.
 
-- 위: 온도 vs 시간 (구간 음영·라벨), 아래: 2θ 히트맵 — 시간축 연동 확대
-- 온도 그래프 아래 눈금 = 그 시각의 온도. 확대하면 간격이 자동으로 촘촘해짐
-- 히트맵 위 마우스: 시간 / KST / 온도 / 2θ / 세기
-- 히트맵 클릭: 그 시점 프로파일을 오른쪽 패널에 겹쳐 그림 (Shift+클릭은 누적)
-- 히트맵 Alt+클릭: 그 2θ 의 세기 vs 시간을 아래 피크 패널에 추가 (상변이로 생기는 픽 확인용)
-- 피크 추적: 히트맵 위 피크 위치, 피크 면적 vs 시간 / vs 온도 (승온 실선, 하온 점선, 유지 점)
+- Top: temperature vs time (segment shading and labels); below: 2θ heatmap, zoomed together on time
+- The ticks under the temperature graph are the temperature at that time; spacing tightens on zoom
+- Hover over the heatmap: time / KST / temperature / 2θ / intensity
+- Click the heatmap: overlay the profile at that time in the right panel (Shift+click accumulates)
+- Alt+click the heatmap: add intensity vs time at that 2θ to the peak panel below (to check peaks
+  that appear in a phase transition)
+- Peak tracking: peak positions on the heatmap, peak area vs time / vs temperature (solid heating,
+  dashed cooling, dotted hold)
 """
 
 from __future__ import annotations
@@ -40,9 +42,9 @@ from .overview import (
 from .style import KIND_DASH, PLOTLY_AXIS, SEG_COLOR, TRACK_COLORS, header, write_fit_html
 from .temperature import fmt_kst
 
-AXIS = PLOTLY_AXIS  # Origin 스타일 (style.py)
+AXIS = PLOTLY_AXIS  # Origin style (style.py)
 
-# 확대/이동할 때마다 온도 눈금을 다시 계산 + 히트맵 클릭 → 프로파일
+# Recomputes the temperature ticks on every zoom/pan and handles heatmap clicks (profiles)
 _JS = """
 const gd = document.getElementById('{plot_id}');
 const D = {data};
@@ -168,13 +170,14 @@ def write_html(
         horizontal_spacing=0.15,
         vertical_spacing=0.085 if len(heights) == 3 else 0.07,
     )
-    # 축 이름: (1,1)=x/y 온도, (1,2)=x2/y2 프로파일, (2,1)=x3/y3 히트맵,
-    #         (3,1)=x4/y4 피크 면적 vs 시간, (3,2)=x5/y5 피크 면적 vs 온도,
-    #         FWHM 줄 r_w: x{2r_w−2} vs 시간, x{2r_w−1} vs 온도.  히트맵 윗변 온도 눈금 = x9
+    # Axis names: (1,1)=x/y temperature, (1,2)=x2/y2 profile, (2,1)=x3/y3 heatmap,
+    #         (3,1)=x4/y4 peak area vs time, (3,2)=x5/y5 peak area vs temperature,
+    #         FWHM row r_w: x{2r_w-2} vs time, x{2r_w-1} vs temperature.  Top ticks of the heatmap = x9
     r_w = 4 if has_tr else 3
     if has_w:
-        # FWHM 줄을 맨 위로 (왼쪽 아래 = 피크 면적 · 전이 온도 상자 스크린샷 구역을 가리지 않게).
-        # 축 번호는 그대로 두고 세로 위치(domain)만 바꿈. FWHM 과 온도 사이 여백 = 구간 라벨 자리
+        # FWHM row on top so the lower left (peak area, transition temperature box) stays free for
+        # screenshots. Axis numbers are kept; only the vertical domain changes. The gap between
+        # FWHM and temperature is where the segment labels go.
         parts = [("w", 0.13), (None, 0.15), ("t", 0.18), (None, 0.06), ("h", 0.30)] + (
             [(None, 0.07), ("k", 0.16)] if has_tr else []
         )
@@ -200,7 +203,6 @@ def write_html(
     dx2, dy2 = fig.layout.xaxis2.domain, fig.layout.yaxis2.domain
     dy3 = fig.layout.yaxis3.domain
 
-    # ── 온도 ──
     dot_trace = None
     T_line = np.full(0, np.nan)
     if det is not None and np.isfinite(det.T).any():
@@ -275,7 +277,6 @@ def write_html(
             1,
         )
 
-    # ── 히트맵 (가로 = 시간, 세로 = 2θ) ──
     tg, Zg = _with_gaps(t_unix, trel, Z)
     vlo, vhi = color_range(Z, cfg.plot.clip)
     if look is not None:
@@ -285,7 +286,7 @@ def write_html(
         t_lab = ["–"] * len(tg)
     k_lab = [fmt_kst(t0 + v * scale)[11:19] for v in tg]
     col_cd = np.array([t_lab, k_lab], dtype=object).T  # (time, 2)
-    # 대부분 프레임이 NaN 인 디텍터 끝 2θ 줄은 빼고 넘김 (축이 히트맵에 딱 맞게)
+    # drop the 2θ rows at the detector edge that are NaN in most frames, so the axis fits the heatmap
     hlo, hhi = tth_range(x, Z)
     yk = (x >= hlo) & (x <= hhi)
     cd = np.broadcast_to(col_cd[None, :, :], (int(yk.sum()), len(tg), 2))
@@ -346,7 +347,7 @@ def write_html(
             unit,
         )
 
-    # 히트맵 윗변 온도 눈금: x3 와 같은 범위로 묶인 x9 축 (보이지 않는 점 하나로 축을 살림)
+    # Temperature ticks on top of the heatmap: axis x9, tied to x3 (one invisible point keeps the axis alive)
     fig.add_trace(
         go.Scatter(
             x=[trel[0]],
@@ -373,9 +374,9 @@ def write_html(
             zeroline=False,
             title=dict(text=""),
         )
-    )  # 뜻은 위 온도 그래프 축 제목에
+    )  # the meaning is in the axis title of the temperature graph above
 
-    # 이미지 없는 시간 = 회색 배경
+    # gray background where there are no images
     for i in gap_indices(t_unix):
         fig.add_vrect(
             x0=trel[i],
@@ -406,7 +407,6 @@ def write_html(
             font=dict(color="#555", size=16),
         )
 
-    # ── 구간: 음영 · 경계 점선 · 위쪽 라벨 ──
     span = trel[-1] - trel[0]
     for k, s in enumerate(segs):
         a, b = float(rel(s.t0)), float(rel(s.t1))
@@ -425,7 +425,8 @@ def write_html(
             fig.add_vline(x=a, line=dict(color="white", dash="dash", width=1.3), row=2, col=1)
             for row in ([3] if has_tr else []) + ([r_w] if has_w else []):
                 fig.add_vline(x=a, line=dict(color="#666", dash="dash", width=1.2), row=row, col=1)
-    for xm, lab in (summary or {}).get("marks", []):  # 등온 모드: 등온 시작 / 끝
+    # isothermal mode: start / end of the isothermal hold
+    for xm, lab in (summary or {}).get("marks", []):
         for row in [1, 2] + ([3] if has_tr else []) + ([r_w] if has_w else []):
             fig.add_vline(x=xm, line=dict(color="#b00020", dash="dashdot", width=2), row=row, col=1)
         fig.add_annotation(
@@ -441,7 +442,7 @@ def write_html(
             bgcolor="rgba(255,255,255,0.8)",
         )
     lines = [s.describe() for s in segs]
-    px_per = 1000 / (span or 1)  # 그래프 폭 ~1000 px 가정 (라벨 겹침 계산용)
+    px_per = 1000 / (span or 1)  # assumes a ~1000 px wide graph (for label overlap)
     widths = [(max(len(l) for l in ln) + 3) * 8.6 / px_per for ln in lines]
     mids = [float(rel((s.t0 + s.t1) / 2)) for s in segs]
     xs = _spread(mids, widths, trel[0], trel[-1])
@@ -466,7 +467,6 @@ def write_html(
             borderpad=4,
         )
 
-    # ── 오른쪽: 구간 경계 프로파일 (겹쳐 그림, 범례 클릭으로 켜고 끔) + 클릭한 시점 ──
     bp = _boundary_profiles(res, list(segs), det, scale)
     Ts = np.array([b[1] for b in bp], float)
     cnorm = Normalize(np.nanmin(Ts), np.nanmax(Ts)) if np.isfinite(Ts).any() else Normalize(0, 1)
@@ -488,7 +488,6 @@ def write_html(
             2,
         )
 
-    # ── 축 / 레이아웃 ──
     title = f"{cfg.folder.name}   start {fr['time_kst'].iloc[0]} KST"
     fig.update_layout(
         template="simple_white",
@@ -519,7 +518,7 @@ def write_html(
                         text=f"<b>peak · transition T = area crosses {tracks[0].level:g}</b>  (▲ up ▼ down)",
                         side="top",
                     ),
-                    # 전이 온도 상자 오른쪽에 나란히 (상자 없으면 왼쪽 끝)
+                    # next to the right of the transition temperature box (left edge if there is none)
                     x=dx[0] + (0.3 if summary else 0),
                     xanchor="left",
                     y=-0.055,
@@ -529,7 +528,7 @@ def write_html(
                     bordercolor="#999",
                     borderwidth=1,
                 ),
-                # 면적 vs 온도 패널은 작아서 범례를 그래프 아래 바깥에
+                # the area vs temperature panel is small, so its legend goes outside, below the graph
                 "legend4": dict(
                     title=dict(text="<b>Peak area vs T: line style</b>", side="top"),
                     orientation="h",
@@ -573,7 +572,7 @@ def write_html(
         row=2,
         col=1,
     )
-    # 히트맵 셀 경계에 범위를 딱 맞추면 픽셀 반올림으로 1 px 배경이 보여서 반 칸 안쪽으로
+    # a range exactly at the heatmap cell edge shows 1 px of background after pixel rounding, so inset half a cell
     inset = 0.5 * (x[1] - x[0])
     fig.update_yaxes(title="2θ (°)", range=[hlo + inset, hhi - inset], row=2, col=1)
     if has_tr:
@@ -582,7 +581,7 @@ def write_html(
         )
         fig.update_yaxes(title="Peak area (norm.)", row=3, col=1)
         lv = tracks[0].level
-        for col in (1, 2):  # 전이 기준선
+        for col in (1, 2):
             fig.add_hline(
                 y=lv,
                 line=dict(color="#444", width=1, dash="dash"),
@@ -658,7 +657,7 @@ def write_html(
         text="<b>Profiles</b> — click heatmap to add (Shift+click to keep)",
     )
 
-    if summary:  # 전이 온도 상자: 왼쪽 맨 아래 (피크 범례 왼쪽) — 왼쪽 아래만 캡처해도 보이게
+    if summary:  # transition temperature box: bottom left, left of the peak legend, so a bottom-left capture shows it
         if summary["ok"]:
             vunit = " min" if summary.get("unit") == "min" else " °C"
             nd = 1 if vunit == " min" else 0
@@ -712,7 +711,7 @@ def write_html(
     }
     plot_id = "overview"
     js = _JS.replace("{plot_id}", plot_id).replace("{data}", json.dumps(data))
-    # 다른 명령과 같은 머리말 · 같은 크기 규칙 (정해진 폭, 창이 작으면 줄어듦, 세로는 스크롤)
+    # same header and sizing rule as the other commands (fixed width, shrinks in a small window, scrolls vertically)
     header(
         fig,
         cfg.folder.name,
@@ -724,7 +723,7 @@ def write_html(
 
 
 def _add_fwhm(fig, series, row: int, trel, temp, kinds, breaks, fr, unit: str) -> None:
-    """FWHM vs 시간 (점 + 이동 중앙값, 범례 클릭으로 켜고 끔) / FWHM vs 온도 (구간 종류별 선 모양)."""
+    """FWHM vs time (dots plus running median, toggled by legend click) and FWHM vs temperature (line style per segment kind)."""
     from .compare import smooth
 
     kst = fr["time_kst"].str[11:19].to_numpy()
@@ -788,7 +787,7 @@ def _add_tracks(fig, tracks: list[tk.Track], trel, temp, kinds, breaks, fr, unit
         c = TRACK_COLORS[i % len(TRACK_COLORS)]
         area = tk.norm_area(tr.area)
         nm = tk.label(tr, temp)
-        # 히트맵 오른쪽 바깥에 피크 이름 (그 2θ 높이) — 데이터는 가리지 않음
+        # peak name outside the right of the heatmap at its 2θ height, so no data is covered
         fig.add_annotation(
             x=1.0,
             y=tr.center,
@@ -843,7 +842,7 @@ def _add_tracks(fig, tracks: list[tk.Track], trel, temp, kinds, breaks, fr, unit
             fig.add_vline(x=trel[k], line=dict(color=c, width=1, dash="dot"), row=2, col=1)
             fig.add_vline(x=trel[k], line=dict(color=c, width=1, dash="dot"), row=3, col=1)
             fig.add_vline(x=temp[k], line=dict(color=c, width=1, dash="dot"), row=3, col=2)
-        # 면적 vs 온도: 승온/하온/유지 구간별 선 모양
+        # area vs temperature: line style per heating/cooling/hold segment
         for a, b in _runs(kinds):
             seg = slice(a, b)
             fig.add_trace(

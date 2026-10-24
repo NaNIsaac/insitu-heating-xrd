@@ -1,12 +1,12 @@
-"""여러 스캔의 2θ 프로파일을 같은 온도(상태)끼리 겹쳐 보기.
+"""Overlay the 2θ profiles of several scans at the same temperature (state).
 
-    uv run main.py profiles exp2.x1 exp2.x2 exp.x8             ← experiments.toml 의 실험 이름
-    uv run main.py profiles x1 x8 -T 350 -T 450 --no-end         ← 온도 직접 지정
+    uv run main.py profiles exp2.x1 exp2.x2 exp.x8      experiment names from experiments.toml
+    uv run main.py profiles x1 x8 -T 350 -T 450 --no-end      temperatures given directly
 
-줄 = 상태 (승온 중 각 온도 ± tol, 마지막 'end' = 냉각 후 마지막 프레임들),
-열 = [세기 I | 비정질로 나눈 R = I/I_비정질 − 1 (compare 와 같은 양: 결정 피크만 남음)]
-선 = 스캔. [peaks] 참고 2θ 는 점선.
-결과: out/profiles/<이름들>.png / .html
+Rows are states (each temperature ± tol while heating; 'end' is the last frames after cooling).
+Columns are [intensity I | R = I / I_amorphous - 1, the same quantity as compare, leaving only
+the crystalline peaks]. Lines are scans; reference 2θ from [peaks] are dotted.
+Output: out/profiles/<names>.png / .html
 """
 
 from __future__ import annotations
@@ -30,16 +30,16 @@ from .style import EXP_COLORS, ORIGIN_RC, origin_plotly
 class Scan:
     name: str
     x: np.ndarray
-    I: dict[str, np.ndarray]  # 상태 → 평균 프로파일
+    I: dict[str, np.ndarray]  # state -> mean profile
     R: dict[str, np.ndarray]
-    T: dict[str, float]  # 상태 → 실제 평균 온도
+    T: dict[str, float]  # state -> actual mean temperature
     color: str
 
 
 def _state_frames(
     T: np.ndarray, kind: np.ndarray, ok: np.ndarray, target: float, tol: float, n: int
 ) -> np.ndarray:
-    """승온(·유지) 중 target ± tol 프레임 중 target 에 가장 가까운 n 개 (냉각 전)."""
+    """The n frames closest to target within ± tol during heating or hold (before cooling)."""
     m = ok & np.isin(kind, ["heat", "hold"]) & (np.abs(T - target) <= tol)
     idx = np.flatnonzero(m)
     return idx[np.argsort(np.abs(T[idx] - target))[:n]] if len(idx) else idx
@@ -63,7 +63,7 @@ def load_scan(
     d = load_exp(e, st, geo, workers)
     if np.isfinite(
         d.T
-    ).any():  # 로그 시간대 밖 프레임(덮어쓰기 후 남은 예전 측정 등)은 이 실험이 아님
+    ).any():  # frames outside the log time range (older measurements left after overwriting) are not this run
         keep = np.isfinite(d.T)
         d.Z, d.t, d.T = d.Z[keep], d.t[keep], d.T[keep]
     ok = beam_ok(d.Z)
@@ -71,10 +71,10 @@ def load_scan(
     if d.log is not None and np.isfinite(d.T).any():
         det = sg.detect(d.log, d.t[0], d.t[-1])
         kind = sg.kinds_at(d.t, det.segments)
-    # 비정질 기준: 가장 처음 n_norm 정상 프레임 (승온 시작)
+    # amorphous reference: the first n_norm good frames (start of heating)
     base = np.flatnonzero(ok)[: st.n_norm]
     pre = time_mean(d.Z[base])
-    cover = np.isfinite(pre) & (pre > 0.3 * np.nanmedian(pre))  # 디텍터가 거의 안 닿는 2θ 제외
+    cover = np.isfinite(pre) & (pre > 0.3 * np.nanmedian(pre))  # skip 2θ the detector barely covers
     with np.errstate(all="ignore"):
         R = np.where(cover, d.Z / pre - 1.0, np.nan)
     out = Scan(name, d.x, {}, {}, {}, color)

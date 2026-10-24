@@ -1,6 +1,9 @@
-"""폴더(들) + 온도 로그 CSV → [구간 라벨 / 온도 / 2θ 히트맵 (가로축=시간) | 구간 경계 프로파일] 한 장 요약.
-승온/유지/하온 구간을 자동 감지해 점선으로 나누고, 각 경계 시점의 프로파일·온도를 오른쪽에 쌓아 보여줌.
-폴더를 여러 개 주면 시간순으로 이어 붙여 전체 온도 프로파일을 한 장에 (이미지 없는 시간은 회색)."""
+"""Folder(s) plus a temperature log CSV to a one-page summary: [segment labels / temperature / 2θ heatmap
+(time on the horizontal axis) | profiles at segment boundaries].
+Heating, hold and cooling segments are detected automatically and separated by dashed lines; the
+profile and temperature at each boundary are stacked on the right.
+With several folders they are joined in time order, giving the whole temperature profile on one
+page (times without images are gray)."""
 
 from collections.abc import Sequence
 from dataclasses import replace
@@ -30,8 +33,9 @@ from .temperature import TempLog, find_log
 
 
 def tth_range(x: np.ndarray, Z: np.ndarray) -> tuple[float, float]:
-    """대부분 프레임에서 데이터가 있는 2θ 범위 (빈 칸 가장자리까지). 디텍터 끝 빈 줄 제외용."""
-    ok = np.flatnonzero(np.isfinite(Z).mean(axis=0) >= 0.5)  # 프레임 절반 이상에서 값이 있는 2θ
+    """2θ range that has data in most frames (to the edge of the empty cells); excludes the empty rows at the detector edge."""
+    # 2θ with values in at least half of the frames
+    ok = np.flatnonzero(np.isfinite(Z).mean(axis=0) >= 0.5)
     if not len(ok):
         return float(x[0]), float(x[-1])
     h = 0.5 * (x[1] - x[0]) if len(x) > 1 else 0.0
@@ -39,13 +43,13 @@ def tth_range(x: np.ndarray, Z: np.ndarray) -> tuple[float, float]:
 
 
 def _gap_threshold(t: np.ndarray) -> float:
-    """프레임 간격이 이보다 크면 '이미지 없음' 으로 봄 [s]."""
+    """A frame spacing above this counts as 'no images' [s]."""
     dt = np.diff(t)
     return max(5 * float(np.median(dt)), 60.0) if len(dt) else 60.0
 
 
 def gap_indices(t: np.ndarray) -> np.ndarray:
-    """프레임 i 와 i+1 사이에 이미지 공백이 있는 i 들."""
+    """Indices i with an image gap between frames i and i+1."""
     return np.flatnonzero(np.diff(t) > _gap_threshold(t))
 
 
@@ -56,11 +60,11 @@ def _boundary_profiles(
     scale: float,
     n_avg: int = 1,
 ):
-    """구간 시작·경계·끝 시각 → (상대시간, 온도, 추정여부, 프로파일).
-    가장 가까운 정상 프레임 ±n_avg 평균. 근처에 프레임이 없는 경계(이미지 공백)는 건너뜀."""
+    """Times of segment starts, boundaries and ends to (relative time, temperature, estimated, profile).
+    Mean of the nearest good frame ± n_avg. Boundaries with no frame nearby (image gaps) are skipped."""
     fr, Z, t_unix = res.frames, res.intensity, res.t_unix
     marks = [segs[0].t0] + [s.t1 for s in segs] if segs else [t_unix[0], t_unix[-1]]
-    # 빔 꺼짐 등으로 거의 0 인 프레임은 대표 프로파일에서 제외 (폴더마다 세기 수준이 다를 수 있어 폴더별로)
+    # exclude near-zero frames (beam off etc.) from the representative profile, judged per folder since intensity levels differ
     good = np.flatnonzero(beam_ok(Z, fr["folder"].to_numpy() if "folder" in fr else None))
     if not len(good):
         good = np.arange(len(Z))
@@ -82,16 +86,16 @@ def _boundary_profiles(
 
 
 def _spread(ys: list[float], hs: list[float], lo: float, hi: float) -> list[float]:
-    """중심 ys, 크기 hs 인 라벨들이 [lo, hi] 안에서 겹치지 않게 최소 이동 (1차원)."""
+    """Minimal 1D shift so labels with centers ys and sizes hs do not overlap inside [lo, hi]."""
     if not ys:
         return []
     order = np.argsort(ys)
     y = np.array(ys, float)[order]
     h = np.array(hs, float)[order]
     y = np.clip(y, lo + h / 2, hi - h / 2)
-    for i in range(1, len(y)):  # 아래에서 위로 밀기
+    for i in range(1, len(y)):
         y[i] = max(y[i], y[i - 1] + (h[i - 1] + h[i]) / 2)
-    if y[-1] + h[-1] / 2 > hi:  # 위가 넘치면 위에서 아래로 되밀기
+    if y[-1] + h[-1] / 2 > hi:  # if the top overflows, push back downward from the top
         y[-1] = hi - h[-1] / 2
         for i in range(len(y) - 2, -1, -1):
             y[i] = min(y[i], y[i + 1] - (h[i] + h[i + 1]) / 2)
@@ -101,12 +105,12 @@ def _spread(ys: list[float], hs: list[float], lo: float, hi: float) -> list[floa
 
 
 def _with_gaps(t: np.ndarray, y: np.ndarray, Z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """프레임 공백에 NaN 행을 넣어 pcolormesh 가 마지막 프레임을 공백 전체로 늘리지 않게."""
+    """Insert NaN rows at frame gaps so pcolormesh does not stretch the last frame over the whole gap."""
     gi = gap_indices(t)
     if len(t) < 2 or not len(gi):
         return y, Z
     half = 0.5 * float(np.median(np.diff(t))) * (y[-1] - y[0]) / (t[-1] - t[0])
-    # 공백마다 (앞 프레임 + half, 뒤 프레임 − half) 두 줄을 NaN 으로 끼워 넣음
+    # at each gap insert two NaN rows: (previous frame + half, next frame - half)
     ins = np.repeat(gi + 1, 2)
     y_new = np.ravel(np.column_stack([y[gi] + half, y[gi + 1] - half]))
     return np.insert(y, ins, y_new), np.insert(Z, ins, np.nan, axis=0)
@@ -119,14 +123,14 @@ TIME_STEPS = {
 
 
 def nice_ticks(lo: float, hi: float, unit: str, max_n: int = 20) -> np.ndarray:
-    """[lo, hi] 안에서 라벨이 max_n 개 이하가 되는 가장 촘촘한 '보기 좋은' 시간 간격의 눈금."""
+    """Ticks in [lo, hi] at the finest 'nice' time step that keeps the labels at max_n or fewer."""
     steps = TIME_STEPS[unit]
     step = next((st for st in steps if (hi - lo) / st <= max_n), steps[-1])
     return np.arange(np.ceil(lo / step - 1e-9) * step, hi + 1e-9, step)
 
 
 def temp_lookup(det: sg.Detection | None, fr: pd.DataFrame, t0: float, scale: float):
-    """상대시간 → (온도, 추정여부) 함수. 온도 정보가 없으면 None."""
+    """Function from relative time to (temperature, estimated); None if there is no temperature information."""
     if det is not None and np.isfinite(det.T).any():
 
         def f(rel):
@@ -151,7 +155,7 @@ def fmt_temp(T: float, est: bool) -> str:
 
 
 class _TempTickLocator(Locator):
-    """확대/이동할 때마다 보이는 구간에 맞춰 시간 간격을 다시 고름 (확대할수록 촘촘)."""
+    """On every zoom/pan, pick the time step again for the visible range (finer when zoomed in)."""
 
     def __init__(self, parent, unit: str, max_n: int):
         self.parent, self.unit, self.max_n = parent, unit, max_n
@@ -172,9 +176,10 @@ def _temp_ticks(
     max_n: int = 20,
     label_ax=None,
 ) -> None:
-    """일정 시간 간격의 온도 값을 눈금 라벨로 (온도 곡선 위 점 표시 포함). 확대하면 간격이 촘촘해짐.
-    label_ax 를 주면 숫자 줄을 그 축의 윗변에 (히트맵 윗변 → 히트맵만 잘라도 온도가 보임),
-    아니면 ax(온도 그래프) 아랫변에."""
+    """Temperature at regular time steps as tick labels (with dots on the temperature curve); the step
+    gets finer when zoomed in. With label_ax the numbers go on the top edge of that axis (the heatmap,
+    so a crop of the heatmap alone still shows the temperature), otherwise on the bottom edge of ax
+    (the temperature graph)."""
     look = temp_lookup(det, fr, t0, scale)
     if look is None:
         return
@@ -184,7 +189,7 @@ def _temp_ticks(
     def label(v, pos=None):
         T, e = look(v)
         s = fmt_temp(T[0], bool(e[0]))
-        # 히트맵 윗변 줄은 촘촘해서 두 줄로 엇갈려 (홀수 번째는 위 줄)
+        # the heatmap's top labels are dense, so stagger them over two lines (odd ones on the upper line)
         if label_ax is not None and pos is not None and pos % 2:
             s += "\n"
         elif label_ax is not None:
@@ -217,7 +222,7 @@ def _temp_ticks(
 
 
 def frame_breaks(fr: pd.DataFrame) -> np.ndarray:
-    """프레임 앞에 이미지 공백 또는 폴더 경계가 있으면 True."""
+    """True where an image gap or folder boundary precedes the frame."""
     t = fr["time_unix"].to_numpy()
     br = np.zeros(len(t), bool)
     br[gap_indices(t) + 1] = True
@@ -238,19 +243,19 @@ def frame_kinds(fr: pd.DataFrame, segs: list[sg.Segment]) -> np.ndarray:
 
 
 def _runs(mask_vals: np.ndarray):
-    """같은 값이 이어지는 [a, b) 구간들."""
+    """[a, b) stretches where the value stays the same."""
     edges = np.flatnonzero(mask_vals[1:] != mask_vals[:-1]) + 1
     return zip(np.r_[0, edges], np.r_[edges, len(mask_vals)])
 
 
 def _peak_tags(ax_h, tracks: list[tk.Track]) -> None:
-    """히트맵 오른쪽 바깥에 피크 이름 (그 2θ 높이, 서로 겹치면 위아래로 벌림) + 짧은 눈금선."""
+    """Peak names outside the right of the heatmap at their 2θ height (spread apart if they overlap) with short leader lines."""
     if not tracks:
         return
     lo, hi = ax_h.get_ylim()
     fig = ax_h.figure
     h_in = ax_h.get_position().height * fig.get_figheight()
-    gap = 10 * 1.3 / 72 / h_in * (hi - lo)  # 글자 한 줄 높이 (데이터 단위)
+    gap = 10 * 1.3 / 72 / h_in * (hi - lo)  # height of one text line (data units)
     ys = _spread([tr.center for tr in tracks], [gap] * len(tracks), lo, hi)
     tr_ = ax_h.get_yaxis_transform()
     for i, (tr, y) in enumerate(zip(tracks, ys)):
@@ -284,15 +289,15 @@ def _plot_tracks(
     ax_leg=None,
     ax_sty=None,
 ):
-    """히트맵 위 피크 위치 표시 / 피크 면적 vs 시간 / 피크 면적 vs 온도 (승온 실선, 하온 점선).
-    범례마다 피크 이름 + 전이 온도 (↑ 나타남 / ↓ 사라짐)."""
+    """Peak positions on the heatmap, peak area vs time and peak area vs temperature (heating solid,
+    cooling dashed). Each legend entry has the peak name and transition temperature (↑ appears, ↓ vanishes)."""
     from matplotlib.lines import Line2D
 
     handles = []
     for i, tr in enumerate(tracks):
         c = TRACK_COLORS[i % len(TRACK_COLORS)]
         area = tk.norm_area(tr.area)
-        # 면적 vs 시간 (이미지 공백에서 선이 이어지지 않게 끊음)
+        # area vs time, broken at image gaps so the line does not bridge them
         lab = tk.label(tr, temp)
         ax_k.plot(trel, np.where(breaks, np.nan, area), color=c, lw=1.6, label=lab)
         evs = {ev for ev, _ in tr.events}
@@ -309,13 +314,12 @@ def _plot_tracks(
                 mew=0.8,
             )
         )
-        # 나타남/사라짐 표시
         for ev, k in tr.events:
             mk = "^" if ev == "appears" else "v"
             ax_k.plot(trel[k], area[k], mk, color=c, ms=9, mec="black", mew=0.8, zorder=6)
             for ax in (ax_h, ax_k):
                 ax.axvline(trel[k], color=c, lw=1.0, ls=":", alpha=0.9)
-        # 면적 vs 온도: 구간 종류(승온/하온/유지)별로 선 모양
+        # area vs temperature: line style per segment kind (heating/cooling/hold)
         for a, b in _runs(kinds):
             seg = slice(a, b)
             ax_v.plot(temp[seg], area[seg], color=c, lw=1.5, ls=KIND_LS.get(kinds[a], "-"))
@@ -336,7 +340,7 @@ def _plot_tracks(
     ax_k.set_xlabel(f"Time ({unit})")
     ax_k.axhline(0, color="0.6", lw=0.8)
     level = tracks[0].level if tracks else 0.5
-    for ax in (ax_k, ax_v):  # 전이 기준선 (정규화 면적 = 0.5)
+    for ax in (ax_k, ax_v):
         ax.axhline(level, color="0.25", lw=1.0, ls=(0, (5, 3)), zorder=1)
     ax_k.text(
         1.005,
@@ -356,7 +360,7 @@ def _plot_tracks(
             title=f"peaks  (▲ area crosses {level:g} up, ▼ down)",
             title_fontproperties={"weight": "bold", "size": 12},
         )
-        if ax_leg is not None:  # 아래 칸 (전이 온도 상자 오른쪽) 에 꽉 차게
+        if ax_leg is not None:  # fill the lower cell, right of the transition temperature box
             ax_leg.set_axis_off()
             ax_leg.legend(
                 loc="center left",
@@ -383,7 +387,8 @@ def _plot_tracks(
         Line2D([], [], color="0.3", ls=ls, label=lab)
         for lab, ls in (("heating", "-"), ("cooling", "--"), ("hold", ":"))
     ]
-    if ax_sty is not None:  # 아래 칸: 선 모양 뜻만 (피크 색·전이 온도는 왼쪽 아래 범례에 있음)
+    # lower cell: only the line style meanings (peak colors and transition temperatures are in the lower left legend)
+    if ax_sty is not None:
         ax_sty.set_axis_off()
         ax_sty.legend(
             handles=styles,
@@ -394,7 +399,7 @@ def _plot_tracks(
             title_fontproperties={"weight": "bold", "size": 12},
             **{**leg_kw, "fontsize": 10},
         )
-    else:  # 그래프 오른쪽 바깥: 피크(전이 온도) + 선 모양 뜻
+    else:  # outside the right of the graph: peaks (transition temperature) plus line style meanings
         ax_v.legend(
             handles=handles + [Line2D([], [], ls="none", label="")] + styles,
             loc="upper left",
@@ -409,7 +414,7 @@ def _plot_tracks(
 def fwhm_series(
     summary: dict | None, tracks: list[tk.Track] | None
 ) -> list[tuple[str, str, np.ndarray]]:
-    """[(피크 이름, 색, 프레임별 FWHM)] — experiments.toml [peaks] 의 피크. 색은 같은 이름의 추적 피크와 같게."""
+    """[(peak name, color, FWHM per frame)] for the [peaks] of experiments.toml; the color matches the tracked peak of the same name."""
     if not summary or not summary.get("fwhm"):
         return []
     names = [tr.name for tr in tracks or []]
@@ -423,7 +428,7 @@ def fwhm_series(
 
 
 def _plot_fwhm(ax_w, ax_wt, trel, series, temp, kinds, breaks, unit) -> None:
-    """FWHM vs 시간 (점 + 이동 중앙값) / FWHM vs 온도 (승온 실선 · 하온 점선)."""
+    """FWHM vs time (dots plus running median) and FWHM vs temperature (heating solid, cooling dashed)."""
     from .compare import smooth
 
     for pk, c, w in series:
@@ -454,7 +459,7 @@ def _plot_fwhm(ax_w, ax_wt, trel, series, temp, kinds, breaks, unit) -> None:
 
 
 def _draw_transition_box(ax, summary: dict | None, header: str = "") -> None:
-    """전이 온도를 크게 (로그북 스크린샷용): 시료·시작 시각 / 피크 이름 · T50 · 중심/FWHM."""
+    """Large transition temperatures for logbook screenshots: sample and start time, then peak name, T50, center/FWHM."""
     ax.set_axis_off()
     if not summary:
         return
@@ -511,7 +516,7 @@ def _draw_transition_box(ax, summary: dict | None, header: str = "") -> None:
         )
         return
     ys = np.linspace(top, 0.16, len(rows)) if len(rows) > 1 else [(top + 0.16) / 2]
-    iso = summary.get("unit") == "min"  # 등온 모드: t50 [min] + n · k
+    iso = summary.get("unit") == "min"
     sides = summary.get("sides") or [f"{c:.2f}°\nFWHM {fwhm:.2f}°" for _, _, c, fwhm in rows]
     for (pk, t50, c, fwhm), side, y in zip(rows, sides, ys):
         ax.text(
@@ -559,9 +564,9 @@ def plot_overview(
     split: bool = False,
     summary: dict | None = None,
 ):
-    """가로축 = 시간. 위: 구간 라벨 / 온도 vs 시간, 가운데: 2θ 히트맵, 아래: 피크 면적 vs 시간 (시간축 공유).
-    오른쪽: 경계 프로파일 / 피크 면적 vs 온도.
-    split=True 면 (시간축 그림, 2θ·온도축 그림) 두 장으로 나눠 반환 (창 두 개로 띄울 때)."""
+    """Time on the horizontal axis. Top: segment labels and temperature vs time; middle: 2θ heatmap;
+    bottom: peak area vs time (shared time axis). Right: boundary profiles and peak area vs temperature.
+    split=True returns two figures (time-axis figure, 2θ/temperature-axis figure) for showing in two windows."""
     x, Z, trel, fr = res.tth, res.intensity, res.trel, res.frames
     segs = det.segments if det is not None else []
     scale, t_unix = res.scale, res.t_unix
@@ -575,20 +580,22 @@ def plot_overview(
         fw = fwhm_series(summary, tracks)
         has_w = bool(fw)
         has_foot = has_tr or bool(summary)
-        # 행: [구간 라벨 | 온도 | (온도 숫자 줄) | 히트맵 | 여백 | 피크 면적 | 여백 | FWHM | 여백 | 아래 칸],
-        #     아래 칸 = [전이 온도 상자 | 피크 범례]  ← 왼쪽 아래만 잘라 써도 다 보이게
-        # 열: [본 그래프 | 피크 이름 | 컬러바 | 여백 | 경계 프로파일 / 면적 vs 온도 / FWHM vs 온도]
-        # FWHM 은 맨 위 (왼쪽 아래 = 피크 면적 · 전이 온도 상자 스크린샷 구역을 가리지 않게)
-        o = 2 if has_w else 0  # FWHM 줄 + 여백만큼 아래로 밀림
+        # Rows: [segment labels | temperature | (temperature number line) | heatmap | gap | peak area |
+        #        gap | FWHM | gap | bottom cell], bottom cell = [transition temperature box | peak legend],
+        #        so a crop of the lower left still shows everything.
+        # Columns: [main graph | peak names | colorbar | gap | boundary profiles / area vs temperature /
+        #           FWHM vs temperature]
+        # FWHM goes on top so the lower left (peak area, transition temperature box) stays free for screenshots.
+        o = 2 if has_w else 0  # offset by the FWHM row plus its gap
         hr = (
             ([0.5, 0.2] if has_w else [])
             + [0.42, 0.62, 0.17, 1]
             + ([0.3, 0.62] if has_tr else [])
             + ([0.24, 0.62] if has_foot else [])
         )
-        r_w = 0  # FWHM 줄
-        r_k = o + 5  # 피크 면적 줄
-        r_f = len(hr) - 1  # 아래 칸 줄
+        r_w = 0
+        r_k = o + 5
+        r_f = len(hr) - 1
         extra_h = (2.2 if has_foot else 0) + (2.0 if has_w else 0)
         if split:
             fig = plt.figure(figsize=(12, (11.5 if has_tr else 8) + extra_h))
@@ -631,7 +638,7 @@ def plot_overview(
             )
         ax_sty = fig.add_subplot(gs[r_f, 4]) if (has_foot and has_tr and not split) else None
 
-        # 온도 vs 시간: 로그 전체(1 s)로 그림. 로그가 끊긴 곳은 외삽 추정값을 점선으로
+        # temperature vs time from the whole 1 s log; over log gaps the extrapolated estimate is dotted
         if det is not None and np.isfinite(det.T).any():
             m = (det.t >= t_unix[0]) & (det.t <= t_unix[-1])
             tx = rel(det.t[m])
@@ -677,7 +684,7 @@ def plot_overview(
         ax_t.set_xlim(trel[0], trel[-1])
         _temp_ticks(ax_t, trel, res.time_unit, t_unix[0], scale, det, fr, max_n=36, label_ax=ax_h)
 
-        # 2θ 히트맵: 가로 = 시간, 세로 = 2θ (이미지 없는 시간은 회색)
+        # heatmap background is gray where there are no images
         vlo, vhi = color_range(Z, cfg.plot.clip)
         kw = (
             {"norm": LogNorm(max(vlo, 1e-3), vhi)}
@@ -695,7 +702,8 @@ def plot_overview(
             rasterized=True,
             **kw,
         )
-        ax_h.set_ylim(*tth_range(x, Z))  # 디텍터 밖(모든 프레임 NaN) 가장자리 빈 줄 제외
+        # exclude empty edge rows outside the detector (NaN in all frames)
+        ax_h.set_ylim(*tth_range(x, Z))
         ax_h.set_ylabel("2θ (°)")
         ax_h.set_xlabel(f"Time ({res.time_unit}) from {fr['time_kst'].iloc[0][11:19]} KST")
         for i in gaps:
@@ -742,7 +750,7 @@ def plot_overview(
                 for i in gaps:
                     ax.axvspan(trel[i], trel[i + 1], color="0.88", lw=0, zorder=0)
 
-        # ── 구간: 온도 패널 음영 + 경계 점선(세로), 라벨은 온도 그래프 위 바깥 ──
+        # segments: shading in the temperature panel and dashed boundary lines; labels above the graph
         labels = []
         for k, s in enumerate(segs):
             x0, x1 = rel(s.t0), rel(s.t1)
@@ -755,7 +763,7 @@ def plot_overview(
                 zorder=0,
                 hatch="//" if s.kind == "gap" else None,
             )
-            if k:  # 경계
+            if k:
                 for ax, c in ((ax_t, "0.2"), (ax_h, "white"), (ax_k, "0.4"), (ax_w, "0.4")):
                     if ax is not None:
                         ax.axvline(x0, color=c, ls="--", lw=1.3, zorder=5)
@@ -763,7 +771,7 @@ def plot_overview(
             lines[0] = f"{k + 1}. {lines[0]}"
             labels.append((s, x0, x1, "\n".join(lines), max(len(ln) for ln in lines)))
 
-        # 등온 모드: 등온 시작 / 끝 세로선 (온도 · 히트맵 · 면적 · FWHM)
+        # isothermal mode: vertical lines at hold start/end (temperature, heatmap, area, FWHM)
         for xm, lab in (summary or {}).get("marks", []):
             for ax, c in (
                 (ax_t, "#b00020"),
@@ -786,7 +794,7 @@ def plot_overview(
                 zorder=7,
             )
 
-        # 라벨이 서로 겹치지 않게 가로 위치 조정 (구간 가운데에서 최소한만 이동)
+        # shift labels horizontally just enough to avoid overlap, around the middle of each segment
         fs = 9.0
         lab_w_in = ax_l.get_position().width * fig.get_figwidth()
         per_char = fs * 0.6 / 72 / lab_w_in * (trel[-1] - trel[0])
@@ -828,7 +836,7 @@ def plot_overview(
             pad=4,
         )
 
-        # ── 경계 시점 프로파일 (아래=처음, 위=나중; 색=온도) ──
+        # profiles at the boundaries: first at the bottom, later above; color = temperature
         bp = _boundary_profiles(res, list(segs), det, scale)
         Ts = np.array([b[1] for b in bp], float)
         cnorm = (
@@ -865,8 +873,8 @@ def plot_overview(
 
 
 def fit_in_window(fig: plt.Figure, pad: float = 0.12) -> None:
-    """바깥 범례·라벨까지 그림 안에 들어오게 축 위치를 옮기고 그림 크기를 맞춤.
-    (저장할 때의 bbox_inches='tight' 를 창에서도 적용)"""
+    """Move the axes and resize the figure so outside legends and labels fit inside it
+    (the effect of bbox_inches='tight' on saving, applied to the window)."""
     fig.canvas.draw()
     bb = fig.get_tightbbox(fig.canvas.get_renderer())
     W, H = fig.get_size_inches()
@@ -881,17 +889,17 @@ def fit_in_window(fig: plt.Figure, pad: float = 0.12) -> None:
 
 
 def show_windows(figs: Sequence[plt.Figure]) -> None:
-    """창 여러 개를 화면에 맞는 크기로 나란히 띄움 (안 들어가면 각자 화면에 맞춤)."""
+    """Show several windows side by side sized to the screen (each fitted to the screen if they do not fit together)."""
     for f in figs:
         fit_in_window(f)
     try:
         win = figs[0].canvas.manager.window
         sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-    except Exception:  # Tk 가 아닌 백엔드
+    except Exception:  # a backend other than Tk
         sw, sh = 1920, 1080
     sizes = [f.get_size_inches() for f in figs]
     dpi = min(100.0, 0.97 * sw / sum(w for w, _ in sizes), 0.86 * sh / max(h for _, h in sizes))
-    side = dpi >= 60  # 너무 작아지면 나란히 말고 각자 화면 크기에 맞춤
+    side = dpi >= 60  # too small side by side: fit each to the screen instead
     x = 0
     for f, (w, h) in zip(figs, sizes):
         d = dpi if side else min(100.0, 0.95 * sw / w, 0.86 * sh / h)
@@ -916,7 +924,7 @@ def find_segments(
 
 
 def _level(Z: np.ndarray) -> float:
-    """빔 정상 프레임들의 세기 수준 (프레임 중앙값의 중앙값)."""
+    """Intensity level of the good-beam frames (median of the frame medians)."""
     with np.errstate(all="ignore"):
         return float(np.nanmedian(np.nanmedian(Z[beam_ok(Z)], axis=1)))
 
@@ -924,8 +932,8 @@ def _level(Z: np.ndarray) -> float:
 def combine(
     results: Sequence[HeatmapResult], names: Sequence[str], match: bool = True
 ) -> HeatmapResult:
-    """여러 폴더 결과를 시간순으로 이어 붙임 (2θ 축이 다르면 첫 폴더 축에 보간).
-    match=True 면 폴더마다 세기 수준(정상 프레임 median)을 마지막 폴더에 맞춤 (노출 차이 보정)."""
+    """Join the results of several folders in time order (interpolated onto the first folder's axis if the 2θ axes differ).
+    match=True scales each folder's intensity level (median of good frames) to the last folder, correcting exposure differences."""
     order = np.argsort([r.frames["time_unix"].iloc[0] for r in results])
     results = [results[i] for i in order]
     names = [names[i] for i in order]
@@ -939,14 +947,14 @@ def combine(
             print(f"   세기 맞춤 {n}: ×{k:.3g}")
     fr = pd.concat([r.frames.assign(folder=n) for r, n in zip(results, names)], ignore_index=True)
     res = HeatmapResult(x, np.vstack(Zs), fr, results[0].time_unit)
-    return res.subset(np.ones(len(fr), bool))  # 상대시간을 첫 폴더 기준으로
+    return res.subset(np.ones(len(fr), bool))  # relative time from the first folder
 
 
 def transition_summary(
     res: HeatmapResult, cfg: Config, tracks: list[tk.Track] | None, peaks_cfg: Path | None
 ) -> dict | None:
-    """experiments.toml 의 [peaks]·[options] 로 compare 와 같은 방식의 T50 계산.
-    맞는 추적 피크에는 hkl 이름과 T50 을 붙임 (범례·히트맵 이름표에 그대로 나옴)."""
+    """T50 computed from [peaks] and [options] of experiments.toml in the same way as compare.
+    Matching tracked peaks get the hkl name and T50 (they appear in the legend and the heatmap tags)."""
     if peaks_cfg is None or not Path(peaks_cfg).exists() or not cfg.temp_log:
         return None
     from . import compare as cmp
@@ -975,7 +983,8 @@ def transition_summary(
             taken.add(i)
             tr = tracks[i]
             tr.name, tr.t50 = pk, t50
-            if np.isfinite(t50):  # ▲ 표시도 같은 기준(X 가 기준을 넘은 첫 프레임)으로
+            # the marker uses the same criterion (first frame where X passes the level)
+            if np.isfinite(t50):
                 Xk = an.X[pk]
                 k = np.flatnonzero(an.use & (np.nan_to_num(Xk, nan=-1) >= st.level))
                 tr.events = [("appears", int(k[0]))] if len(k) else []
@@ -987,7 +996,7 @@ def transition_summary(
         "level": st.level,
         "fwhm": an.fwhm,
         "center": an.center,
-    }  # 프레임별 (피크 없는 프레임 NaN)
+    }  # per frame (NaN where there is no peak)
 
 
 def iso_summary(
@@ -997,8 +1006,8 @@ def iso_summary(
     peaks_cfg: Path | None,
     t0: str | None = None,
 ) -> dict | None:
-    """등온 모드: avrami 와 같은 분석 (승온 → 등온 → 하온, t0 = 등온 시작) 으로 피크별 t50 · n · k.
-    transition_summary 와 같은 모양 (전이 상자 · FWHM 줄에 그대로 씀) + 등온 시작/끝 표시."""
+    """Isothermal mode: t50, n and k per peak from the same analysis as avrami (heating, hold, cooling; t0 = hold start).
+    Same shape as transition_summary (used as is by the transition box and the FWHM row) plus hold start/end marks."""
     if peaks_cfg is None or not Path(peaks_cfg).exists() or not cfg.temp_log:
         return None
     from . import avrami as av
@@ -1016,7 +1025,8 @@ def iso_summary(
         if np.isfinite(r.T_iso)
         else "\n🌡️  등온 분석"
     )
-    idx = {f: i for i, f in enumerate(files)}  # 분석에 쓴 프레임 → 전체 프레임 위치
+    # frame used in the analysis -> position among all frames
+    idx = {f: i for i, f in enumerate(files)}
     pos = np.array([idx[f] for f in r.files]) if len(r.files) else np.empty(0, int)
 
     def full(a: np.ndarray) -> np.ndarray:
@@ -1036,7 +1046,7 @@ def iso_summary(
             f"   {pk:>6}: t50 {f.get('t50', np.nan):.2f} min  n {f.get('n', np.nan):.2f}  "
             f"k {f.get('k', np.nan):.3g}/min  τ {f.get('tau', np.nan):.2f} min"
         )
-    if tracks:  # 맞는 추적 피크에 hkl 이름만
+    if tracks:  # only the hkl name for matching tracked peaks
         taken: set[int] = set()
         for pk, _, c, _ in rows:
             near = [
@@ -1073,8 +1083,8 @@ def iso_summary(
 
 
 def drop_orphans(res: HeatmapResult) -> HeatmapResult:
-    """이미지 공백으로 나뉜 블록 중 온도가 한 프레임도 안 맞는 블록(덮어쓰기 후 남은 예전 측정 등)을 뺌.
-    온도 매칭은 절대시각(EPICS) 기준이라, 로그 시간대 밖의 블록은 이 실험이 아님."""
+    """Drop blocks, split by image gaps, in which no frame matches a temperature (older measurements left after overwriting).
+    Temperature matching uses absolute time (EPICS), so a block outside the log time range is not this experiment."""
     fr = res.frames
     if "temp_pv" not in fr or not fr["temp_pv"].notna().any():
         return res
@@ -1094,7 +1104,7 @@ def drop_orphans(res: HeatmapResult) -> HeatmapResult:
 
 
 def _pick_log(res: HeatmapResult, cfg: Config) -> Config:
-    """온도 로그를 안 줬으면 프레임 절대시각(EPICS)과 가장 많이 겹치는 data/temperature 아래 로그를 고름."""
+    """If no temperature log was given, pick the log under data/temperature overlapping the frame absolute times (EPICS) the most."""
     log = find_log(res.t_unix)
     if log is None:
         print("⚠️  프레임 시간대와 겹치는 온도 로그가 data/temperature 에 없음 → 온도 없이 그림")
@@ -1119,12 +1129,12 @@ def run(
     iso: bool = False,
     iso_t0: str | None = None,
 ) -> HeatmapResult:
-    """cfg.folder (+ extra 폴더들) → overview. 여러 폴더면 결과 이름은 'a+b'.
-    cfg.temp_log 가 없고 auto_log 면 시간이 맞는 온도 로그를 자동 선택.
-    결과 저장 후 cfg.plot.show 면: 기본은 인터랙티브 HTML 을 브라우저로,
-    mpl=True 면 matplotlib 창 두 개 (시간축 그림 / 2θ·온도축 그림)."""
+    """cfg.folder (+ extra folders) to the overview; with several folders the result name is 'a+b'.
+    Without cfg.temp_log and with auto_log, a temperature log matching the times is chosen automatically.
+    After saving, if cfg.plot.show: the interactive HTML opens in the browser by default, or with
+    mpl=True two matplotlib windows (time-axis figure / 2θ and temperature-axis figure)."""
     folders: list[Path] = []
-    for f in (cfg.folder, *extra):  # 같은 폴더 중복 지정 시 프레임이 두 번 들어가지 않게
+    for f in (cfg.folder, *extra):  # so a folder given twice does not add its frames twice
         if f.resolve() in [g.resolve() for g in folders]:
             print(f"⚠️  중복 폴더 무시: {f}")
         else:
@@ -1176,9 +1186,9 @@ def run(
         tracks = tk.track(res.tth, res.intensity, frame_breaks(res.frames), track_opt)
     summary = (
         iso_summary(res, cfg, tracks, peaks_cfg, iso_t0)
-        if iso  # 등온: t50 · n · k
+        if iso
         else transition_summary(res, cfg, tracks, peaks_cfg)
-    )  # 맞는 트랙에 hkl 이름·T50 붙임
+    )  # attaches the hkl name and T50 to matching tracks
     if tracks is not None:
         ev = tk.events_table(tracks, res.frames, frame_temps(res.frames, det))
         print("\n🔎 피크 추적 (↑ 나타남 / ↓ 사라짐)\n" + ev.round(1).to_string(index=False))

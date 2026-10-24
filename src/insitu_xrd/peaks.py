@@ -1,4 +1,4 @@
-"""피크 검출 · 가우시안 피팅."""
+"""Peak detection and Gaussian fitting."""
 
 from typing import NamedTuple
 
@@ -23,7 +23,7 @@ def _gauss_lin(t, amp, mu, sig, b0, b1):
 
 
 def fit_peak(x: FArray, y: FArray, x0: float, half_window: float = 0.4) -> PeakFit:
-    """x0 근처를 가우시안 + 선형 배경으로 피팅."""
+    """Fit a Gaussian on a linear background within half_window of x0."""
     m = (np.abs(x - x0) <= half_window) & np.isfinite(y)
     if m.sum() < 6:
         return NAN_FIT
@@ -45,8 +45,9 @@ def detect_peaks(
     min_distance: float = 0.15,
     smooth: int = 7,
 ) -> tuple[FArray, np.ndarray]:
-    """NaN(갭) 이 섞인 프로파일에서 피크 인덱스 검출 → (smoothed, peak_idx).
-    prominence=None 이면 배경 제거 잔차 표준편차의 3배. min_distance 는 x 단위."""
+    """Peak indices of a profile that may contain NaN gaps: (smoothed, peak_idx).
+    prominence=None means 3 times the std of the residual after removing the background.
+    min_distance is in x units."""
     good = np.isfinite(y)
     yy = np.where(good, y, np.nanmedian(y))
     if smooth and smooth >= 5:
@@ -55,4 +56,4 @@ def detect_peaks(
         prominence = 3 * np.std(yy - savgol_filter(yy, 51, 2))
     dist = max(1, round(min_distance / (x[1] - x[0])))
     pk, _ = find_peaks(yy, prominence=prominence, distance=dist)
-    return yy, pk[good[pk]]  # 갭 위의 가짜 피크 제거
+    return yy, pk[good[pk]]  # drop false peaks on filled gaps

@@ -1,8 +1,8 @@
-"""그림 공통 스타일 (matplotlib · Plotly) 과 범례 자동 배치."""
+"""Shared figure style (matplotlib and Plotly) and automatic legend placement."""
 
 import numpy as np
 
-# Origin 기본 그래프 느낌: 사방 굵은 테두리, 안쪽 눈금(주/보조), 큰 글씨, 격자 없음, Arial
+# Origin-like graph: thick frame on all sides, inward major/minor ticks, large text, no grid, Arial
 ORIGIN_RC = {
     "font.family": "sans-serif",
     "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
@@ -39,9 +39,8 @@ ORIGIN_RC = {
     "savefig.bbox": "tight",
 }
 
-# ─────────── Plotly (HTML) 공통 스타일 — 모든 명령이 같은 모양 ───────────
-#   Origin / 논문 그림: Arial, 사방 굵은 검은 테두리, 안쪽 주·보조 눈금, 격자 없음, 큰 글씨
-#   크기 규칙 (px): 제목 22 · 부제 15 · 그래프 제목 18 · 축 제목 20 · 눈금 17 · 범례 15 · 본문 16
+# Plotly (HTML) style shared by all commands, same Origin / paper look.
+# Sizes (px): title 22, subtitle 15, graph title 18, axis title 20, ticks 17, legend 15, body 16
 FONT_FAMILY = "Arial, Helvetica, sans-serif"
 PLOTLY_FONT = dict(family=FONT_FAMILY, size=16, color="black")
 PLOTLY_AXIS = dict(
@@ -66,7 +65,7 @@ MARGIN = dict(t=80, l=90, r=30, b=70)
 
 
 def origin_plotly(fig) -> None:
-    """Plotly 그림 전체에 Origin 스타일 (굵은 테두리 · 큰 글씨) 적용. write_html 직전에 호출."""
+    """Apply the Origin style (thick frame, large text) to a Plotly figure; call just before write_html."""
     fig.update_layout(
         template="simple_white",
         font=PLOTLY_FONT,
@@ -76,13 +75,13 @@ def origin_plotly(fig) -> None:
     )
     fig.update_xaxes(**PLOTLY_AXIS)
     fig.update_yaxes(**PLOTLY_AXIS)
-    for a in fig.layout.annotations:  # 서브플롯 제목 (make_subplots) 도 크게
+    for a in fig.layout.annotations:  # subplot titles from make_subplots too
         if a.font.size is None:
             a.font.size = 18
 
 
 def header(fig, title: str, sub: str = "") -> None:
-    """모든 HTML 의 맨 위 왼쪽 제목: 굵은 이름 + 회색 부제 (시료 · 시각 · 조건)."""
+    """Top-left title of every HTML page: bold name plus a gray subtitle (sample, time, conditions)."""
     text = f"<b>{title}</b>" + (
         f"   <span style='font-size:15px;color:#555'>{sub}</span>" if sub else ""
     )
@@ -127,10 +126,11 @@ def write_fit_html(
     extra_js: str = "",
     refresh: float = 0,
 ):
-    """그림을 정해진 크기(width×height px)로: 창이 더 커도 늘어나지 않아 빈 곳 없이 글씨 비율 일정
-    (스샷 → 로그북에 붙여도 글씨가 작아지지 않음), 창이 작으면 창에 맞게 줄어듦.
-    fit_height=False 면 세로는 맞추지 않음 (긴 그림은 스크롤). extra_js = 그림 뒤에 붙일 스크립트,
-    refresh > 0 이면 그 초마다 페이지 새로 읽기 (측정 중 --watch)."""
+    """Write the figure at a fixed size (width x height px). A larger window does not stretch it, so the
+    text ratio stays constant (a screenshot pasted into a logbook keeps readable text); a smaller
+    window shrinks it to fit. fit_height=False does not fit the height (tall figures scroll).
+    extra_js is a script appended after the figure; refresh > 0 reloads the page every that many
+    seconds (--watch during a measurement)."""
     fig.update_layout(autosize=True, width=None, height=None)
     js = (
         _FIT_JS.replace("{id}", div_id)
@@ -156,10 +156,8 @@ def write_fit_html(
     return path
 
 
-# 온도 구간 색 (matplotlib · Plotly 공용)
 SEG_COLOR = {"heat": "#d62728", "hold": "#8c8c8c", "cool": "#1f77b4", "gap": "#d9d9d9"}
 
-# 실험 / 피크 트랙 선 색
 EXP_COLORS = [
     "#d62728",
     "#1f77b4",
@@ -172,12 +170,11 @@ EXP_COLORS = [
 ]
 TRACK_COLORS = ["#2ca02c", "#9467bd", "#ff7f0e", "#17becf", "#e377c2", "#8c564b", "#bcbd22"]
 
-# 면적 vs 온도: 구간 종류별 선 모양
 KIND_LS = {"heat": "-", "cool": "--", "hold": ":"}
 KIND_DASH = {"heat": "solid", "cool": "dash", "hold": "dot"}
 
 
-# ─────────── matplotlib 범례: 그래프 안 빈 곳 자동 (그래프 하나만 잘라 캡처해도 보이게) ───────────
+# Legends go in a free spot inside the axes so a screenshot of a single graph still shows them.
 LEGEND_LOCS = [
     "upper left",
     "upper right",
@@ -192,7 +189,7 @@ LEGEND_LOCS = [
 
 
 def _densify(p: np.ndarray, step: float = 3.0) -> np.ndarray:
-    """화면 좌표 꺾은선을 step px 마다 점으로 (선이 상자를 가로지르기만 해도 세어지게)."""
+    """Resample a polyline in screen coordinates every step px, so a line merely crossing a box is counted."""
     p = p[np.all(np.isfinite(p), axis=1)]
     if len(p) < 2:
         return p
@@ -206,8 +203,10 @@ def _densify(p: np.ndarray, step: float = 3.0) -> np.ndarray:
 def place_legend(
     ax, marker_weight: float = 60.0, text_weight: float = 1e4, grid: int = 19, **kw
 ) -> None:
-    """범례를 가리는 게 가장 적은 곳에. 후보 = 표준 9 위치 + 안쪽 grid×grid 위치 (축 안에 다 들어가는 것만).
-    점수 = 상자 안 선(3 px 간격 점) 수 + ◆ 같은 큰 표식 × marker_weight + 숫자 라벨과 겹치면 text_weight."""
+    """Put the legend where it hides the least. Candidates are the 9 standard locations plus an inner
+    grid x grid of positions (only those that fit inside the axes).
+    Score = line points in the box (3 px spacing) + big markers such as diamonds x marker_weight
+    + text_weight when it overlaps a numeric label."""
     fig = ax.figure
     fig.canvas.draw()
     r = fig.canvas.get_renderer()
@@ -215,7 +214,7 @@ def place_legend(
     for ln in ax.get_lines():
         xy = ln.get_xydata()
         if not len(xy) or ln.get_transform() != ax.transData:
-            continue  # axhline · axvline 같은 기준선(축 좌표)은 가려도 됨
+            continue  # reference lines (axhline, axvline) in axes coordinates may be covered
         p = ln.get_transform().transform(xy)
         big = ln.get_marker() not in (None, "None", "", " ", "o", ".") and ln.get_markersize() >= 6
         p = p if big else _densify(p)
@@ -234,7 +233,7 @@ def place_legend(
     for i, c in enumerate(cands):
         bb = ax.legend(**c, **kw).get_window_extent(r)
         if bb.x0 < axbb.x0 - 1 or bb.x1 > axbb.x1 + 1 or bb.y0 < axbb.y0 - 1 or bb.y1 > axbb.y1 + 1:
-            continue  # 축 밖으로 삐져나가면 안 씀
+            continue  # sticks out of the axes
         inside = (
             (pts[:, 0] >= bb.x0)
             & (pts[:, 0] <= bb.x1)
@@ -245,7 +244,7 @@ def place_legend(
             float(np.nansum(w[inside]))
             + text_weight * sum(bb.overlaps(t) for t in texts)
             + (0 if i < len(LEGEND_LOCS) else 0.5)
-        )  # 같으면 표준 위치(모서리) 우선
+        )  # on a tie, prefer a standard (corner) location
         if best is None or score < best[0]:
             best = (score, c)
     ax.legend(**(best[1] if best else dict(loc="best")), **kw)

@@ -1,4 +1,4 @@
-"""이미지 → 2θ 1D 프로파일 적분."""
+"""Integrate an image into a 1D 2θ profile."""
 
 from __future__ import annotations
 
@@ -13,22 +13,23 @@ from .geometry import FArray, Geometry
 
 @dataclass(frozen=True, slots=True)
 class ProfileOptions:
-    tth_bin: float = 0.02  # 2θ 빈 크기 [deg]
+    tth_bin: float = 0.02  # 2θ bin size [deg]
     region: Literal["full", "strip"] = "full"
-    strip_width: int = 10  # region="strip" 일 때 가로 중앙 폭 [px]
+    strip_width: int = 10  # width of the horizontal center strip for region="strip" [px]
     normalize: bool = False
-    min_fill: float = 0.2  # 빈 픽셀 수가 중앙값의 이 비율 미만이면 NaN (0 이면 끔)
+    # bins with fewer pixels than this fraction of the median count are NaN (0 disables)
+    min_fill: float = 0.2
 
 
 def strip_bounds(img_width: int, width: int) -> tuple[int, int]:
-    """가로 정중앙 기준 width 폭의 [x0, x1) 범위."""
+    """[x0, x1) of a strip of the given width centered horizontally."""
     x0 = img_width // 2 - width // 2
     return x0, x0 + width
 
 
 @dataclass(slots=True)
 class RadialIntegrator:
-    """픽셀 → 2θ 빈 인덱스를 한 번만 계산해 두고 bincount 로 빠르게 적분."""
+    """Computes the pixel to 2θ bin index once, then integrates quickly with bincount."""
 
     selection: NDArray[np.bool_]
     bin_index: NDArray[np.intp]
@@ -58,7 +59,7 @@ class RadialIntegrator:
         total = np.bincount(self.bin_index[ok], weights=values[ok], minlength=n_bins)
         count = np.bincount(self.bin_index[ok], minlength=n_bins)
         with np.errstate(invalid="ignore", divide="ignore"):
-            prof = total / count  # 데이터 없는 빈(갭)은 NaN
+            prof = total / count  # empty bins (gaps) are NaN
         if self.min_fill > 0:
             prof[count < self.min_fill * np.median(count[count > 0])] = np.nan
         return prof

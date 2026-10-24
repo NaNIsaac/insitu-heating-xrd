@@ -1,8 +1,9 @@
-"""h5 한 장 보기: 원본 디텍터 이미지 (왼쪽) | 2θ–χ 로 펼친 이미지 + χ 평균 2θ 프로파일 (오른쪽).
+"""View one h5 image: raw detector image (left) | image unwrapped to 2θ–χ plus the χ-averaged 2θ profile (right).
 
-펼친 이미지: 각 픽셀의 (2θ, χ) 로 다시 모음 (빈 평균). 링은 세로선이 되고, 링을 따라 세기가
-고르지 않으면 (집합조직 · 큰 결정립 반점) 세로선이 끊기거나 점으로 보임.
-χ = 빔에 수직한 면에서 잰 방위각, 0 = 디텍터 세로 중앙선 (산란면).
+Unwrapped image: pixels rebinned by (2θ, χ) and averaged per bin. A ring becomes a vertical line;
+if intensity along the ring is uneven (texture, large-grain spots) the line breaks or turns to dots.
+χ is the azimuth measured in the plane perpendicular to the beam, 0 at the vertical center line of
+the detector (the scattering plane).
 """
 
 from pathlib import Path
@@ -19,7 +20,7 @@ from .temperature import TempLog, find_log, fmt_kst
 
 
 def chi_map(geo: Geometry, shape: tuple[int, int]) -> FArray:
-    """각 픽셀의 방위각 χ [deg] (tth_map 과 같은 실험실 좌표, 빔 = z)."""
+    """Azimuth χ of each pixel [deg], in the same lab frame as tth_map (beam along z)."""
     y, x = np.mgrid[: shape[0], : shape[1]]
     u = (x - geo.xc) * geo.pixel
     v = (geo.yc - y) * geo.pixel
@@ -29,8 +30,9 @@ def chi_map(geo: Geometry, shape: tuple[int, int]) -> FArray:
 
 
 def cake(img: FArray, tth: FArray, chi: FArray, tth_bin: float, chi_bin: float):
-    """(2θ, χ) 격자로 다시 모은 이미지 + χ 평균 2θ 프로파일. 픽셀이 안 떨어진 칸은 NaN.
-    프로파일은 픽셀 수로 가중 (갭에 걸친 칸은 픽셀이 적어 버림 → 가짜 뾰족점 없음)."""
+    """Image rebinned on a (2θ, χ) grid and the χ-averaged 2θ profile; bins with no pixel are NaN.
+    The profile is weighted by pixel count; 2θ columns with under half the median count (across
+    a gap) are dropped so they do not produce false spikes."""
     ok = np.isfinite(img)
     te = np.arange(np.nanmin(tth), np.nanmax(tth) + tth_bin, tth_bin)
     ce = np.arange(np.nanmin(chi), np.nanmax(chi) + chi_bin, chi_bin)
@@ -44,7 +46,7 @@ def cake(img: FArray, tth: FArray, chi: FArray, tth_bin: float, chi_bin: float):
 
 
 def resolve(target: str, index: int) -> tuple[Path, int, int, list[Path]]:
-    """폴더 · .h5 파일 · experiments.toml 실험 이름 → (파일, 순번, 전체 수, 온도 로그)."""
+    """Folder, .h5 file or experiments.toml experiment name to (file, index, total, temperature logs)."""
     p = Path(target)
     if p.suffix.lower() == ".h5" and p.is_file():
         files = sorted(p.parent.glob("*.h5"))
@@ -60,7 +62,8 @@ def resolve(target: str, index: int) -> tuple[Path, int, int, list[Path]]:
                 f"❌ 없음: {target}  (.h5 파일 · 이미지 폴더 · {SETTINGS_FILE.name} 의 실험 이름)\n"
                 f"   있는 이름: {exp_names()}"
             )
-        files = [f for d in e.images for f in list_files(d)]  # 폴더 여러 개면 이어서 번호
+        # with several folders the index runs across all of them
+        files = [f for d in e.images for f in list_files(d)]
         logs = e.recipe
     i = index if index >= 0 else len(files) + index
     if not 0 <= i < len(files):
@@ -103,7 +106,7 @@ def plot(
     ax0.set_title("detector (2θ contours)")
     ax0.minorticks_off()
 
-    def coord(x, y):  # 마우스 위치에 2θ · χ 표시
+    def coord(x, y):
         r, c = int(round(y)), int(round(x))
         if 0 <= r < img.shape[0] and 0 <= c < img.shape[1]:
             return f"x={c} y={r}  2θ={tth[r, c]:.3f}°  χ={chi[r, c]:.2f}°  I={img[r, c]:.1f}"
@@ -134,7 +137,7 @@ def plot(
     ax2.set_ylabel("χ-avg I")
     if log:
         ax2.set_yscale("log")
-    for k, (name, c) in enumerate(peaks.items()):  # experiments.toml [peaks] 위치
+    for k, (name, c) in enumerate(peaks.items()):  # [peaks] positions from experiments.toml
         if te[0] < c < te[-1]:
             for a in (ax1, ax2):
                 a.axvline(c, color="#1f77b4", ls="--", lw=1.4, alpha=0.8)
@@ -149,7 +152,8 @@ def plot(
                 color="#1f77b4",
             )
     ax2.set_xlim(te[0], te[-1])
-    p1, p2 = ax1.get_position(), ax2.get_position()  # 컬러바로 줄어든 위 그림과 2θ 축 맞춤
+    # align the 2θ axis with the upper plot, which the colorbar narrowed
+    p1, p2 = ax1.get_position(), ax2.get_position()
     ax2.set_position([p1.x0, p2.y0, p1.width, p2.height])
     fig.suptitle(title, fontsize=17, fontweight="bold")
     return fig
@@ -171,13 +175,13 @@ def write_html(
     cmap: str,
     path: Path,
 ) -> Path:
-    """브라우저용 (다른 명령과 같은 스타일): 원본 디텍터 (마우스 = 2θ · χ) | 펼친 2θ–χ + χ 평균 프로파일."""
+    """HTML page: raw detector (hover shows 2θ and χ) | unwrapped 2θ–χ with the χ-averaged profile."""
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
     from .style import header, origin_plotly, write_fit_html
 
-    k = 2  # 원본은 2×2 픽셀 평균 (HTML 크기)
+    k = 2  # raw image is averaged over 2x2 pixels to keep the HTML small
     h, w = (img.shape[0] // k) * k, (img.shape[1] // k) * k
 
     def down(a):
@@ -266,7 +270,7 @@ def write_html(
         2,
         2,
     )
-    for name, c in peaks.items():  # experiments.toml [peaks] 위치
+    for name, c in peaks.items():  # [peaks] positions from experiments.toml
         if te[0] < c < te[-1]:
             for row in (1, 2):
                 fig.add_vline(

@@ -1,19 +1,18 @@
-"""진입점.
+"""Entry point.
 
-python main.py                 ← 인자 없이 실행(VS Code ▶ 버튼 포함): experiments.toml 로 실험 비교 (compare)
-python main.py <명령> [옵션]    ← overview, compare, overlay, image ... (자세히: python main.py -h)
+python main.py                  no arguments (also the VS Code run button): compare the experiments in experiments.toml
+python main.py <command> [options]  overview, compare, overlay, image ... (see python main.py -h)
 """
 
 import sys
 
 from insitu_xrd.cli import main
 
-# 인자 없이 실행했을 때 할 일 (바꾸고 싶으면 여기만 수정)
-DEFAULT_ARGS = ["compare"]  # 예: ["compare", "다른설정.toml"], ["overview", "IGOx1", "--mpl"]
+DEFAULT_ARGS = ["compare"]  # e.g. ["compare", "other.toml"], ["overview", "IGOx1", "--mpl"]
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    # 명령 없이 옵션만 주면 (예: python main.py --no-show) 기본 명령에 붙임. -h 는 전체 도움말
+    # options without a command (python main.py --no-show) go to the default command; -h stays global help
     if not args or (args[0].startswith("-") and args[0] not in ("-h", "--help")):
         args = DEFAULT_ARGS + args
     main(args)

@@ -1,11 +1,13 @@
-"""여러 스캔(회차 상관없이)의 전이를 한 그림에 겹쳐 보기 — overview 왼쪽(온도 · 피크 면적 vs 시간) + X vs 온도.
+"""Overlay the transitions of several scans (any run) in one figure: the left of overview
+(temperature, peak area vs time) plus X vs temperature.
 
-    uv run main.py overlay exp.x1 exp2.x1                ← 재현성 (같은 시료 다른 회차)
+    uv run main.py overlay exp.x1 exp2.x1      reproducibility (same sample, different runs)
     uv run main.py overlay x1 x2 x4 x8 exp2.x8
 
-시간축 = 승온 시작부터 [min] (레시피가 같으면 곡선이 겹침).
-줄: [온도 vs 시간] / [X vs 시간 (피크별)] / [X vs 온도 (피크별)], 각 스캔의 전이점(T50) ◆ · 점선 · 숫자.
-X · T50 은 compare 와 같은 계산 (tracks.transition_point). 결과: out/overlay/<이름들>.png / .html
+Time axis is minutes from the start of heating (curves overlap when the recipe is the same).
+Rows: [temperature vs time] / [X vs time per peak] / [X vs temperature per peak], with each scan's
+transition point (T50) as a diamond, dashed line and number.
+X and T50 are computed as in compare (tracks.transition_point). Output: out/overlay/<names>.png / .html
 """
 
 from __future__ import annotations
@@ -28,10 +30,10 @@ from .tracks import normalize_step
 @dataclass(slots=True)
 class Scan:
     r: ExpResult
-    tmin: np.ndarray  # 승온 시작부터 [min]
+    tmin: np.ndarray  # minutes from the start of heating
     T: np.ndarray
-    X: dict[str, np.ndarray]  # 피크 → 모든 프레임의 X (승온 · 유지 · 냉각)
-    t50_time: dict[str, float]  # 피크 → T50 에 도달한 시각 [min]
+    X: dict[str, np.ndarray]  # peak -> X of every frame (heat, hold, cool)
+    t50_time: dict[str, float]  # peak -> time T50 is reached [min]
 
 
 def _scan(name: str, i: int, config: Path, geo: Geometry, workers: int | None) -> Scan:
@@ -40,7 +42,7 @@ def _scan(name: str, i: int, config: Path, geo: Geometry, workers: int | None) -
         raise SystemExit(f"❌ {Path(config).name} 에 실험 '{name}' 없음 (예: x1, exp2.x8)")
     st = load_settings(config, need_exps=False)
     r = run_exp(e, st, geo, workers, EXP_COLORS[i % len(EXP_COLORS)])
-    r.name = name  # 범례에 회차까지 (exp2.x1)
+    r.name = name  # the legend shows the run too (exp2.x1)
     tab = r.table
     t = pd.to_datetime(tab["time_kst"]).to_numpy("datetime64[s]").astype(float)
     heat = np.flatnonzero(tab["kind"].to_numpy() == "heat")
@@ -52,7 +54,7 @@ def _scan(name: str, i: int, config: Path, geo: Geometry, workers: int | None) -
         tp = (r.trans or {}).get(pk, {})
         X[pk] = normalize_step(T, A, tp) if tp.get("ok") else tab[f"X_{pk}"].to_numpy(float)
         X[pk][~np.isfinite(T)] = np.nan
-        # T50 시각: 승온 중 T 가 T50 을 지나는 시각 (사용 프레임에서 보간)
+        # time T crosses T50 while heating, interpolated over the used frames
         u = tab["used"].to_numpy(bool)
         t50 = r.t50.get(pk, np.nan)
         t50_time[pk] = (
@@ -64,7 +66,7 @@ def _scan(name: str, i: int, config: Path, geo: Geometry, workers: int | None) -
 
 
 def _span(scans, pk, key) -> float:
-    """그 축의 보이는 범위 (라벨 간격 기준): 시간축 = 전체 측정 시간, 온도축 = T50 ± 40 °C."""
+    """Visible range of the axis, used for label spacing: time = whole measurement, temperature = T50 ± 40 °C."""
     if key == "t":
         return float(max(np.nanmax(s.tmin) for s in scans) - min(np.nanmin(s.tmin) for s in scans))
     t50s = [s.r.t50[pk] for s in scans if np.isfinite(s.r.t50.get(pk, np.nan))]
@@ -72,7 +74,7 @@ def _span(scans, pk, key) -> float:
 
 
 def _rows(scans, pk, key) -> list[tuple]:
-    """라벨이 겹치지 않게 줄 배정한 [(스캔, 값, 라벨 높이)] — 축 범위의 7 % 보다 가까우면 다음 줄."""
+    """[(scan, value, label height)] with labels spread over rows; closer than 7 % of the axis range goes to the next row."""
     vals = [(s, s.r.t50.get(pk, np.nan) if key == "T" else s.t50_time[pk]) for s in scans]
     vals = sorted([v for v in vals if np.isfinite(v[1])], key=lambda v: v[1])
     gap = 0.07 * _span(scans, pk, key)
@@ -142,7 +144,7 @@ def plot(scans: list[Scan], peaks: list[str], level: float) -> plt.Figure:
             ax_x.set(xlabel="PV (°C)", ylabel="X (normalised area)")
             ax_x.set_title(f"{pk}  — X vs T  (number = T50 °C)", fontsize=15, loc="left")
             t50s = [s.r.t50[pk] for s in scans if np.isfinite(s.r.t50.get(pk, np.nan))]
-            if t50s:  # 전이 부근만 (± 40 °C)
+            if t50s:  # only near the transition (± 40 °C)
                 ax_x.set_xlim(min(t50s) - 40, max(t50s) + 40)
         fig.suptitle(
             "  vs  ".join(s.r.name for s in scans),
@@ -153,10 +155,10 @@ def plot(scans: list[Scan], peaks: list[str], level: float) -> plt.Figure:
         )
         for i, ax in enumerate(
             legend_axes
-        ):  # 그래프마다 안쪽 빈 곳에 범례 (그래프 하나만 잘라 캡처해도 보이게)
+        ):  # a legend inside each graph so a screenshot of one graph still shows it
             title = (
                 None if i == 0 else ("time to T50" if i % 2 == 1 else "T50")
-            )  # [T, (X-t, X-T) × 피크]
+            )  # order: [T, (X-t, X-T) per peak]
             place_legend(
                 ax,
                 fontsize=12.5,
@@ -170,7 +172,8 @@ def plot(scans: list[Scan], peaks: list[str], level: float) -> plt.Figure:
     return fig
 
 
-HTML_W, HTML_H = 1250, 1050  # HTML 그림 크기 (창이 더 커도 이 크기, 작으면 줄어듦) · 범례 크기 추정
+# HTML figure size (kept in a larger window, shrunk in a smaller one); also used to size legends
+HTML_W, HTML_H = 1250, 1050
 HTML_MARGIN = dict(t=110, l=70, r=30, b=60)
 
 
@@ -183,13 +186,15 @@ def _legend_spot(
     dom_y,
     grid: int = 13,
 ) -> tuple[float, float]:
-    """플롯 하나 안에서 범례를 둘 빈 곳 (paper 좌표 중심). pts = [(x, y, 가중치)], 선은 촘촘히 보간해 셈.
-    PNG 의 place_legend 와 같은 생각: 가리는 점 (◆ · 숫자 라벨은 무겁게) 이 가장 적은 위치."""
+    """Free spot for a legend inside one plot (center, paper coordinates). pts = [(x, y, weight)];
+    lines are densely interpolated before counting.
+    Same idea as place_legend for PNG: the position that covers the fewest points (diamonds and
+    number labels weigh heavily)."""
     pw = HTML_W - HTML_MARGIN["l"] - HTML_MARGIN["r"]
     ph = HTML_H - HTML_MARGIN["t"] - HTML_MARGIN["b"]
     bw = (max(len(s) for s in labels) * 8.6 + 60) / (
         pw * (dom_x[1] - dom_x[0])
-    )  # 축 비율 (글씨 15 px)
+    )  # as a fraction of the axis (15 px text)
     bh = (len(labels) * 26 + 14) / (ph * (dom_y[1] - dom_y[0]))
     P, W = [], []
     for x, y, w in pts:
@@ -197,7 +202,8 @@ def _legend_spot(
         v = (np.asarray(y, float) - yr[0]) / (yr[1] - yr[0])
         ok = np.isfinite(u) & np.isfinite(v)
         u, v = u[ok], v[ok]
-        if len(u) > 1 and w <= 1:  # 선: 0.004 간격으로 보간 (가로지르기만 해도 세어지게)
+        # line: interpolate at 0.004 spacing so a mere crossing is counted
+        if len(u) > 1 and w <= 1:
             seg = np.hypot(np.diff(u), np.diff(v))
             k = np.minimum(np.maximum(1, (seg / 0.004).astype(int)), 100)
             s = np.repeat(np.arange(len(seg)), k)
@@ -210,7 +216,7 @@ def _legend_spot(
     best = None
     xs = np.linspace(bw / 2 + 0.01, 1 - bw / 2 - 0.01, grid) if bw < 0.98 else [0.5]
     ys = np.linspace(bh / 2 + 0.01, 1 - bh / 2 - 0.01, grid) if bh < 0.98 else [0.5]
-    for fy in ys[::-1]:  # 같은 점수면 위쪽 · 오른쪽 우선
+    for fy in ys[::-1]:  # on equal scores prefer upper right
         for fx in xs[::-1]:
             inside = (np.abs(P[:, 0] - fx) <= bw / 2) & (np.abs(P[:, 1] - fy) <= bh / 2)
             score = float(W[inside].sum())
@@ -236,7 +242,7 @@ def write_html(scans: list[Scan], peaks: list[str], level: float, path: Path) ->
         + [f"{pk} — X vs time" for pk in peaks]
         + [f"{pk} — X vs T" for pk in peaks],
     )
-    # 플롯마다 범례 하나: legend (온도), legend{2j} (X vs 시간), legend{2j+1} (X vs T)
+    # one legend per plot: legend (temperature), legend{2j} (X vs time), legend{2j+1} (X vs T)
     lg = {
         (1, 1): "legend",
         **{(2, j): f"legend{2 * j}" for j in range(1, n + 1)},
@@ -311,7 +317,7 @@ def write_html(scans: list[Scan], peaks: list[str], level: float, path: Path) ->
                 panel[(row, j)]["pts"] += [
                     ([v], [level], 60.0),
                     ([v], [ly], 1000.0),
-                ]  # ◆ · 숫자 라벨 피하기
+                ]  # keep the legend off the diamond and number label
                 c = s.r.color
                 rows = (1, row) if key == "t" else (row,)
                 for rr in rows:
@@ -354,7 +360,6 @@ def write_html(scans: list[Scan], peaks: list[str], level: float, path: Path) ->
             fig.update_yaxes(
                 range=[-0.1, 1.38], tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0], row=row, col=j
             )
-    # 각 플롯 안 빈 곳에 그 플롯의 범례 (그래프 하나만 캡처해도 보이게)
     legends = {}
     for (row, col), p in panel.items():
         ax = fig.get_subplot(row, col)

@@ -1,5 +1,5 @@
-"""단일 이미지 → 2θ 프로파일 (중앙 스트립 / 전체 링 평균) + 피크 피팅.
-브라우저 HTML (다른 명령과 같은 스타일), PNG 는 --save 일 때."""
+"""2θ profile of one image (center strip and full-ring average) with peak fits.
+Written as HTML; PNG only with --save."""
 
 import webbrowser
 from pathlib import Path
@@ -24,7 +24,7 @@ def analyze(
     prominence: float | None,
     min_distance: float,
 ) -> dict:
-    """{영역 이름: (2θ, 세기, 다듬은 세기, 피크 인덱스, [피팅 결과 dict])}."""
+    """Per region name: (2θ, intensity, smoothed intensity, peak indices, [fit result dicts])."""
     tth = geo.tth_map(img.shape)
     x0, x1 = strip_bounds(img.shape[1], strip_width)
     out = {}

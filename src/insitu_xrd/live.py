@@ -1,12 +1,13 @@
-"""폴더 하나 → 시간에 따른 2θ 히트맵 · 피크 세기 · FWHM (온도 없이, 측정 중 확인용).
+"""One folder: 2θ heatmap, peak intensity and FWHM over time, without temperature (for checking during a measurement).
 
-    uv run main.py heatmap Z:\\...\\IGO_x1_5th            ← 지금까지 찍힌 것
-    uv run main.py heatmap Z:\\...\\IGO_x1_5th --watch 30 ← 30 초마다 새 파일 반영 (창 닫으면 끝)
+    uv run main.py heatmap <folder>             everything recorded so far
+    uv run main.py heatmap <folder> --watch 30  pick up new files every 30 s (ends when the window closes)
 
-피크 세기 = 피크 중심 ± max(0.15°, FWHM/4) 의 원래 세기 I 평균 (히트맵에서 보이는 그대로).
-값 상자: 지금 세기 (처음 세기) · 최근 N 분 동안의 변화 (전체 증가분 대비 %) · FWHM · 중심
-→ 최근 변화가 0 % 근처면 포화 (상변이 끝남).
-적분 캐시가 새 파일만 이어 붙이므로 다시 돌려도 빠름.
+Peak intensity is the mean of the raw intensity I within peak center ± max(0.15°, FWHM/4),
+as seen in the heatmap. The value box shows the current intensity (initial intensity), the change
+over the last N minutes (% of the total rise), FWHM and center. A recent change near 0 % means
+saturation (the phase transition is over). The integration cache appends only new files, so
+reruns are fast.
 """
 
 from __future__ import annotations
@@ -38,9 +39,8 @@ def compute(folder: Path, geo: Geometry, workers: int | None, config: Path = DEF
     idx = np.flatnonzero(ok)
     n = max(1, min(st.n_norm, len(idx) // 4))
     win, areas, shapes = peak_areas(x, Z, idx[:n], idx[-n:], st, say=lambda *a: None, widths=True)
-    # 피크 세기 = 피크 중심 ± max(0.15°, FWHM/4) 의 원래 세기 I 평균 — 히트맵에서 보이는 그대로 작았다 커짐
-    #   (면적은 비정질로 나눈 R 이라 비정질 할로가 줄면 피크가 커져도 감소할 수 있고,
-    #    넓은 창의 최댓값은 창 끝 비정질 할로를 잡을 수 있음)
+    # raw I rather than area: the area uses R (divided by the amorphous), so it can fall while the
+    # peak grows if the amorphous halo shrinks; the max of a wide window can pick up the halo at its edge
     inten, band = {}, {}
     for pk, (c, fwhm, _, _) in win.items():
         hw = max(0.15, fwhm / 4 if np.isfinite(fwhm) else 0.15)
@@ -57,7 +57,7 @@ def compute(folder: Path, geo: Geometry, workers: int | None, config: Path = DEF
 
 
 def _recent(tm: np.ndarray, A: np.ndarray, minutes: float, a0: float) -> tuple[float, float]:
-    """(지금 면적, 최근 minutes 분 동안 변화 / 전체 증가분 [%]). 직선 피팅 기울기 × minutes."""
+    """(current value, change over the last minutes / total rise [%]); change is the line-fit slope times minutes."""
     m = np.isfinite(A)
     if m.sum() < 3:
         return np.nan, np.nan
@@ -88,12 +88,11 @@ def draw(
     ax_a = fig.add_subplot(gs[2, 0], sharex=ax_w)
     cax = fig.add_subplot(gs[1, 1])
 
-    # 2θ 히트맵 (실제 시간축: 촬영이 끊긴 시간은 빈칸)
     Zs = np.where(ok[:, None], Z, np.nan)
     lo, hi = color_range(Zs, clip)
     dt = np.median(np.diff(tm)) if len(tm) > 1 else 1.0
     gap = np.flatnonzero(np.diff(tm) > 3 * dt)
-    tg = np.insert(tm, gap + 1, tm[gap] + dt)  # 끊긴 곳마다 빈 프레임 하나
+    tg = np.insert(tm, gap + 1, tm[gap] + dt)  # one empty frame at each acquisition gap
     Zg = np.insert(Zs, gap + 1, np.nan, axis=0)
     edges = np.r_[tg[0] - dt / 2, (tg[1:] + tg[:-1]) / 2, tg[-1] + dt / 2]
     xe = np.r_[x[0] - (x[1] - x[0]) / 2, (x[1:] + x[:-1]) / 2, x[-1] + (x[1] - x[0]) / 2]
@@ -106,7 +105,7 @@ def draw(
     lines = []
     for i, (pk, A) in enumerate(d["inten"].items()):
         c = TRACK_COLORS[i % len(TRACK_COLORS)]
-        cen, (lo_w, hi_w) = d["win"][pk][0], d["band"][pk]  # 세기를 재는 띠
+        cen, (lo_w, hi_w) = d["win"][pk][0], d["band"][pk]  # band over which intensity is measured
         for v in (lo_w, hi_w):
             ax_h.axhline(v, color=c, lw=1.2, ls="--", alpha=0.9)
         ax_h.text(
@@ -143,7 +142,6 @@ def draw(
     for a in (ax_w, ax_h):
         a.tick_params(labelbottom=False)
     ax_a.set_xlim(tm[0] - dt / 2, tm[-1] + dt / 2)
-    # 값 상자: 맨 위 (포화되면 최근 변화 % 가 0 근처)
     for j, (c, s) in enumerate(lines):
         fig.text(0.07, 0.95 - 0.04 * j, s, color=c, fontsize=15, fontweight="bold", va="top")
     fig.suptitle(
@@ -158,7 +156,7 @@ def draw(
 
 
 def peak_stats(d: dict, recent: float) -> list[dict]:
-    """피크별 지금 값: 세기 (처음 세기) · 최근 recent 분 변화 % · FWHM · 2θ."""
+    """Current value per peak: intensity (initial), change over the last recent minutes [%], FWHM, 2θ."""
     tm = (d["t"] - d["t"][0]) / 60.0
     out = []
     for i, (pk, A) in enumerate(d["inten"].items()):
@@ -189,7 +187,7 @@ def write_html(
     cmap: str = "inferno",
     refresh: float = 0,
 ) -> Path:
-    """브라우저용 (다른 명령과 같은 스타일): 맨 위 피크별 지금 값 · FWHM(t) · 2θ 히트맵 · 피크 세기(t)."""
+    """HTML page: per-peak current values on top, then FWHM(t), the 2θ heatmap and peak intensity(t)."""
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
@@ -205,7 +203,7 @@ def write_html(
     lo, hi = color_range(Zs, clip)
     dt = np.median(np.diff(tm)) if len(tm) > 1 else 1.0
     gap = np.flatnonzero(np.diff(tm) > 3 * dt)
-    tg = np.insert(tm, gap + 1, tm[gap] + dt)  # 촬영이 끊긴 시간은 빈칸
+    tg = np.insert(tm, gap + 1, tm[gap] + dt)  # empty frame at each acquisition gap
     Zg = np.insert(Zs, gap + 1, np.nan, axis=0)
     names = np.insert(d["names"].astype(object), gap + 1, "")
     fig.add_trace(
@@ -299,7 +297,6 @@ def write_html(
             3,
             1,
         )
-    # 지금 값 (포화 = 최근 변화 % 가 0 근처)
     lines = [
         f"<span style='color:{s_['color']}'><b>{s_['pk']}</b>   I <b>{s_['I']:.1f}</b> (start {s_['I0']:.1f})"
         f"   ·   last {recent:g} min <b>{s_['rate']:+.1f} %</b>   ·   FWHM {s_['fwhm']:.3f}°"

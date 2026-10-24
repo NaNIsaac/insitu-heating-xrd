@@ -1,7 +1,8 @@
-"""폴더 내 HDF5 디텍터 이미지 → 링 평균 2θ 프로파일 → 시간 히트맵 (+ 온도 로그).
+"""HDF5 detector images in a folder to ring-averaged 2θ profiles to a time heatmap (plus temperature log).
 
-적분 결과는 out/cache/ 에 저장해 두고, 폴더의 파일(개수·수정시각)과 기하·적분 옵션이 그대로면
-다시 계산하지 않음 (overview · compare · heatmap 공용).
+Integration results are cached in out/cache/ and not recomputed while the folder's files (count,
+modification times), the geometry and the integration options are unchanged. Shared by overview,
+compare and heatmap.
 """
 
 from __future__ import annotations
@@ -29,7 +30,6 @@ from .io import list_files, load_image, read_frame
 from .temperature import PV, SV, TempLog, fmt_kst, parse_time
 
 
-# ═════════════════════════════ 설정 ═════════════════════════════
 @dataclass(frozen=True, slots=True)
 class PlotOptions:
     log_color: bool = False
@@ -39,7 +39,7 @@ class PlotOptions:
     clip: tuple[float, float] = (
         25.0,
         99.7,
-    )  # overview 히트맵 색 범위 (세기 백분위). 낮출수록 대비 약함
+    )  # overview heatmap color range (intensity percentiles); lower means less contrast
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,21 +48,21 @@ class Config:
     pattern: str = "*.h5"
     dset: str = DSET
     attr: str = ATTR
-    workers: int | None = None  # None = min(8, CPU 수)
+    workers: int | None = None  # None = min(8, CPU count)
     geometry: Geometry = Geometry()
     profile: ProfileOptions = ProfileOptions()
     plot: PlotOptions = PlotOptions()
     temp_log: Path | Sequence[Path] | None = (
-        None  # 온도 로그 CSV (여러 개면 합침, 없으면 온도 생략)
+        None  # temperature log CSV (several are merged; none omits temperature)
     )
     at: tuple[
         float | str, ...
-    ] = ()  # 표시할 시각: 숫자=첫 프레임 기준 상대시간(time_unit), 'HH:MM:SS'=KST 시각
-    cache: str | None = None  # use / refresh / off (None = 전역: --cache · 환경변수 · toml)
+    ] = ()  # times to show: a number is relative to the first frame (time_unit), 'HH:MM:SS' is KST
+    # use / refresh / off (None = global: --cache, environment variable, toml)
+    cache: str | None = None
 
 
-# ═════════════════════════════ 프레임 로딩 (병렬) ═════════════════════════════
-# 워커 프로세스마다 한 번만 만드는 전역 상태 (Windows spawn 대응)
+# built once per worker process; global because Windows starts workers with spawn
 _worker: tuple[Config, RadialIntegrator] | None = None
 
 
@@ -72,7 +72,7 @@ def _init_worker(cfg: Config, shape: tuple[int, int]) -> None:
 
 
 def _process(path: Path) -> tuple[float, FArray] | str:
-    """(촬영시각, 프로파일). 깨진 파일은 오류 문자열 (하나 때문에 전체가 멈추지 않게)."""
+    """(acquisition time, profile), or an error string for an unreadable file so one bad file does not stop the run."""
     assert _worker is not None
     cfg, integ = _worker
     try:
@@ -86,7 +86,7 @@ def _process(path: Path) -> tuple[float, FArray] | str:
 
 
 def _integrate(files: Sequence[Path], cfg: Config, shape: tuple[int, int]):
-    """파일들 → (시각[n], 프로파일[n, 2θ], 파일명[n]), 시간순. 몇 개뿐이면 프로세스 없이 바로."""
+    """Files to (times[n], profiles[n, 2θ], names[n]) in time order; a few files run in-process without a pool."""
     workers = cfg.workers or min(8, os.cpu_count() or 1)
     times, profs, names = [], [], []
 
@@ -122,8 +122,9 @@ def _integrate(files: Sequence[Path], cfg: Config, shape: tuple[int, int]):
 
 
 def _cache_file(cfg: Config) -> Path:
-    """폴더 · 기하 · 적분 옵션 → 캐시 파일 이름. 파일 목록 · 수정시각은 캐시 안에 저장해 두고 비교
-    (새 파일만 늘었으면 그것만 적분해서 이어 붙임 → 측정 중에 다시 돌려도 빠름)."""
+    """Cache file name for a folder, geometry and integration options. The file list and modification
+    times are stored inside the cache and compared; if only new files appeared, just those are
+    integrated and appended, so rerunning during a measurement is fast."""
     g = cfg.geometry
     sig = json.dumps(
         [
@@ -140,15 +141,16 @@ def _cache_file(cfg: Config) -> Path:
 
 
 def _mtimes(cfg: Config, files: Sequence[Path]) -> np.ndarray:
-    mt = {e.name: e.stat().st_mtime for e in os.scandir(cfg.folder)}  # Windows 는 stat 이 공짜
+    # on Windows scandir returns stat for free
+    mt = {e.name: e.stat().st_mtime for e in os.scandir(cfg.folder)}
     return np.array([mt.get(f.name, 0.0) for f in files])
 
 
-_cache_mode = CACHE_MODE  # 명령의 --cache 로 바꿈 (set_cache_mode)
+_cache_mode = CACHE_MODE  # set by the command's --cache (set_cache_mode)
 
 
 def set_cache_mode(mode: str | None) -> None:
-    """이번 실행 전체의 캐시 방식: use / refresh / off (None 이면 그대로)."""
+    """Cache mode for this whole run: use / refresh / off (None leaves it unchanged)."""
     global _cache_mode
     if mode is None:
         return
@@ -162,7 +164,7 @@ def set_cache_mode(mode: str | None) -> None:
 
 
 def integrate_folder(cfg: Config) -> tuple[FArray, FArray, FArray, np.ndarray]:
-    """폴더 → (2θ, 세기[frame, 2θ], 촬영시각 Unix[frame], 파일명[frame]). 캐시 방식은 cfg.cache 또는 전역."""
+    """Folder to (2θ, intensity[frame, 2θ], acquisition time Unix[frame], file names[frame]); cache mode is cfg.cache or the global one."""
     mode = cfg.cache or _cache_mode
     files = list_files(cfg.folder, cfg.pattern)
     cache = _cache_file(cfg)
@@ -171,8 +173,9 @@ def integrate_folder(cfg: Config) -> tuple[FArray, FArray, FArray, np.ndarray]:
         d = dict(np.load(cache, allow_pickle=False))
         old = dict(zip(d["all_files"], d["all_mtimes"])) if "all_files" in d else {}
         now = dict(zip((f.name for f in files), mt))
-        if old and all(now.get(k) == v for k, v in old.items()):  # 지운 · 덮어쓴 파일 없음
-            new = [f for f in files if f.name not in old]  # 새 파일 + 지난번 읽기 실패
+        if old and all(now.get(k) == v for k, v in old.items()):  # no file deleted or overwritten
+            # new files plus those that failed to read last time
+            new = [f for f in files if f.name not in old]
             if not new:
                 tqdm.write(f"📂 {cfg.folder}  ({len(files)} files)  ↺ 캐시 {cache.name}")
                 return d["tth"], d["intensity"], d["time_unix"], d["files"]
@@ -204,7 +207,8 @@ def integrate_folder(cfg: Config) -> tuple[FArray, FArray, FArray, np.ndarray]:
     t, Z, names = _integrate(files, cfg, shape)
     if mode != "off":
         cache.parent.mkdir(parents=True, exist_ok=True)
-        now = dict(zip((f.name for f in files), mt))  # 읽기 실패한 파일(쓰는 중 등)은 다음에 다시
+        # files that failed to read (e.g. still being written) are retried next time
+        now = dict(zip((f.name for f in files), mt))
         np.savez_compressed(
             cache,
             tth=x,
@@ -218,21 +222,20 @@ def integrate_folder(cfg: Config) -> tuple[FArray, FArray, FArray, np.ndarray]:
 
 
 def cache_files(match: str | None = None) -> list[Path]:
-    """out/cache 의 캐시 파일 (match 가 있으면 폴더 이름에 그 글자가 들어간 것만)."""
+    """Cache files in out/cache; with match, only those whose folder name contains it."""
     fs = sorted(CACHE_DIR.glob("*.npz")) if CACHE_DIR.exists() else []
     return [f for f in fs if match is None or match.lower() in f.stem.rsplit("_", 1)[0].lower()]
 
 
-# ═════════════════════════════ 공용 도우미 ═════════════════════════════
 def time_mean(Z: FArray) -> FArray:
-    """갭(전 프레임 NaN) 빈 경고 없이 시간 평균."""
+    """Time mean without the all-NaN warning for gap bins."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         return np.nanmean(Z, axis=0)
 
 
 def beam_ok(Z: FArray, groups: np.ndarray | None = None, frac: float = 0.2) -> np.ndarray:
-    """빔 꺼짐 등 거의 0 인 프레임 = False. 그룹(폴더·블록)마다 프레임 세기 중앙값의 frac 미만."""
+    """False for near-zero frames (beam off etc.): below frac of the median frame intensity of each group (folder or block)."""
     with np.errstate(all="ignore"), warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         level = np.nanmedian(Z, axis=1)
@@ -246,7 +249,7 @@ def beam_ok(Z: FArray, groups: np.ndarray | None = None, frac: float = 0.2) -> n
 
 
 def regrid(x: FArray, tth: FArray, Z: FArray) -> FArray:
-    """다른 2θ 축(tth)의 프로파일들을 x 축으로 보간 (같은 축이면 그대로)."""
+    """Interpolate profiles on another 2θ axis (tth) onto x; unchanged if the axes match."""
     if len(tth) == len(x) and np.allclose(tth, x):
         return Z
     return np.array([np.interp(x, tth, z, left=np.nan, right=np.nan) for z in Z])
@@ -267,7 +270,6 @@ def intensity_label(cfg: Config, scaled: bool = False) -> str:
     )
 
 
-# ═════════════════════════════ 결과 ═════════════════════════════
 @dataclass(slots=True)
 class HeatmapResult:
     tth: FArray
@@ -277,7 +279,7 @@ class HeatmapResult:
 
     @property
     def scale(self) -> float:
-        """상대시간 단위의 초 수."""
+        """Seconds per relative-time unit."""
         return 60.0 if self.time_unit == "min" else 1.0
 
     @property
@@ -289,7 +291,7 @@ class HeatmapResult:
         return self.frames["time_rel"].to_numpy()
 
     def subset(self, keep: np.ndarray) -> HeatmapResult:
-        """일부 프레임만 (상대시간은 남은 첫 프레임 기준으로 다시)."""
+        """Keep only some frames; relative time restarts at the first kept frame."""
         fr = self.frames[keep].reset_index(drop=True)
         fr["time_rel"] = (fr["time_unix"] - fr["time_unix"].iloc[0]) / self.scale
         return HeatmapResult(self.tth, self.intensity[keep], fr, self.time_unit)
@@ -300,7 +302,7 @@ class HeatmapResult:
         self.frames["temp_sv"] = log.at(t, SV)
 
     def nearest(self, at: float | str) -> int:
-        """at (상대시간 또는 'HH:MM:SS' KST) 에 가장 가까운 프레임 인덱스."""
+        """Index of the frame closest to at (relative time or 'HH:MM:SS' KST)."""
         if isinstance(at, str):
             return int(
                 np.argmin(
@@ -310,7 +312,6 @@ class HeatmapResult:
         return int(np.argmin(np.abs(self.trel - at)))
 
 
-# ═════════════════════════════ 그림 ═════════════════════════════
 def plot(res: HeatmapResult, cfg: Config) -> plt.Figure:
     geo, po = cfg.geometry, cfg.plot
     x, Z, trel, fr = res.tth, res.intensity, res.trel, res.frames
@@ -323,7 +324,6 @@ def plot(res: HeatmapResult, cfg: Config) -> plt.Figure:
     at_idx = [res.nearest(t) for t in cfg.at]
     colors = plt.cm.tab10(np.arange(len(at_idx)) % 10)
 
-    # 히트맵
     lo, hi = color_range(Z, (1, 99.5))
     kw = {"norm": LogNorm(max(lo, 1e-3), hi)} if po.log_color else {"vmin": lo, "vmax": hi}
     mesh = ax_map.pcolormesh(x, trel, Z, shading="nearest", cmap=po.cmap, **kw)
@@ -341,7 +341,6 @@ def plot(res: HeatmapResult, cfg: Config) -> plt.Figure:
     )
     ax_map.secondary_xaxis("top", functions=(geo.tth_to_q, geo.q_to_tth)).set_xlabel("q (Å⁻¹)")
 
-    # 온도 vs 시간 (히트맵과 시간축 공유)
     if has_temp:
         ax = axes[1]
         ax.sharey(ax_map)
@@ -352,7 +351,6 @@ def plot(res: HeatmapResult, cfg: Config) -> plt.Figure:
         ax.legend(fontsize=9)
         ax.grid(alpha=0.3)
 
-    # 시간 평균 + 선택 시각 프로파일
     ax_prof.plot(x, time_mean(Z), lw=1, color="0.6", label="time average")
     for i, c in zip(at_idx, colors):
         label = f"{trel[i]:.2f} {po.time_unit}"
@@ -369,7 +367,6 @@ def plot(res: HeatmapResult, cfg: Config) -> plt.Figure:
     return fig
 
 
-# ═════════════════════════════ 실행 ═════════════════════════════
 def compute(cfg: Config) -> HeatmapResult:
     x, Z, t, names = integrate_folder(cfg)
     unit = cfg.plot.time_unit

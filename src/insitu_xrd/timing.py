@@ -1,4 +1,4 @@
-"""폴더 내 HDF5 파일의 생성시각 vs EPICS 촬영시각 비교 → CSV."""
+"""Compare HDF5 file creation times in a folder with the EPICS acquisition times; writes a CSV."""
 
 from pathlib import Path
 
@@ -33,15 +33,13 @@ def collect(folder: Path, pattern: str = "*.h5", attr: str = ATTR) -> pd.DataFra
 
     df = pd.DataFrame(rows).sort_values("created").reset_index(drop=True)
 
-    # 첫 파일 기준 상대시간 / 이전 파일과의 간격 (초)
     for col in ["created", "epics"]:
         df[f"{col}_rel_s"] = df[col] - df[col].iloc[0]
         df[f"{col}_dt_s"] = df[col].diff()
 
-    # 촬영 시각 → 파일 생성까지 지연 (NAS 복사본이면 커질 수 있음)
+    # grows if the files are copies on a NAS
     df["write_lag_s"] = df["created"] - df["epics"]
 
-    # 사람이 읽는 시각 (KST)
     for col in ["created", "modified", "epics"]:
         df[f"{col}_kst"] = df[col].map(_fmt)
     return df

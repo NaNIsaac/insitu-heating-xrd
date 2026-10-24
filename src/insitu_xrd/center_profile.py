@@ -1,4 +1,4 @@
-"""단일 이미지의 가로 중앙 스트립 → 세로(픽셀) 프로파일 + 피크."""
+"""Vertical (pixel row) profile of the horizontal center strip of one image, with peaks."""
 
 from pathlib import Path
 from typing import Literal
@@ -14,7 +14,7 @@ from .io import load_image
 
 
 def center_strip_profile(img: FArray, width: int, reduce: Literal["mean", "sum"] = "mean"):
-    """가로 정중앙 기준 width 폭을 잘라 세로(높이) 방향 프로파일 반환."""
+    """Profile along the height of a strip of the given width centered horizontally."""
     x0, x1 = strip_bounds(img.shape[1], width)
     strip = img[:, x0:x1]
     prof = np.nansum(strip, axis=1) if reduce == "sum" else np.nanmean(strip, axis=1)
@@ -22,7 +22,7 @@ def center_strip_profile(img: FArray, width: int, reduce: Literal["mean", "sum"]
 
 
 def detect_pixel_peaks(prof: FArray, prominence: float | None = None, distance: int = 5):
-    """prominence=None 이면 프로파일 표준편차의 3배."""
+    """prominence=None means 3 times the profile std."""
     if prominence is None:
         prominence = 3 * np.std(prof)
     return find_peaks(prof, prominence=prominence, distance=distance)
@@ -50,7 +50,6 @@ def run(
         print(f"{p:>8d} {prof[p]:>12.2f} {pr:>12.2f} {wd:>10.2f}")
 
     fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(13, 6), gridspec_kw={"width_ratios": [1, 1.6]})
-    # 왼쪽: 이미지 + 스트립 위치
     vmax = np.nanpercentile(img, 99.5)
     ax0.imshow(img, cmap="viridis", vmin=0, vmax=vmax, aspect="auto")
     ax0.axvspan(x0, x1, color="r", alpha=0.3)
@@ -58,7 +57,6 @@ def run(
     ax0.set_xlabel("x (px)")
     ax0.set_ylabel("y (px)")
 
-    # 오른쪽: 높이 방향 프로파일 + 피크
     ax1.plot(y, prof, lw=1)
     ax1.plot(peaks, prof[peaks], "rx", ms=8)
     for p in peaks:

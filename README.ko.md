@@ -11,6 +11,12 @@ In-situ heating 2D XRD analysis: Eiger HDF5 detector images to 2θ profiles, tim
 - 온도 로그로 승온 / 유지 / 하온 구간 자동 분할, 피크 추적, 피크 면적 · FWHM vs 온도
 - 실험별 결정화 분율 X vs 온도와 전이 온도 T50 비교, 등온 측정의 Avrami 지수
 
+![Eiger 프레임과 온도 로그의 시간 정렬, 2θ 적분, 피크 추적 및 출력을 설명하는 개념도](docs/media/readme-pipeline.svg)
+
+*개념 설명용 SVG이며 실제 실험 데이터나 터미널 캡처가 아닙니다.*
+
+
+
 ```powershell
 uv run main.py heatmap Z:\...\IGO_x1_5th      # 폴더 하나 → 2θ 히트맵 + 피크 면적 · FWHM
 uv run main.py overview x1                    # experiments.toml 의 실험 x1 → 온도 + 히트맵 + 구간 한 장

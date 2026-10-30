@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="570" viewBox="0 0 1200 570" role="img" aria-labelledby="title description"><title id="title">In-situ XRD measurement pipeline</title><desc id="description">Eiger HDF5 images and temperature controller records are joined by timestamps, integrated into two-theta profiles, and visualized as a time heatmap and peak or transition summaries. The heatmap below is only a schematic.</desc>
+<rect x="0" y="0" width="1200" height="570" rx="0" fill="#f7fbfe" stroke="#f7fbfe" stroke-width="2"/>
+<text x="34" y="53" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="29" font-weight="700" fill="#103453">In-situ heating XRD / from detector to transition map</text>
+<text x="34" y="82" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="18" font-weight="400" fill="#58748c">One time axis connects Eiger frames, temperature logs, diffraction and peak tracking.</text>
+<rect x="34" y="119" width="268" height="188" rx="15" fill="#fff" stroke="#c6d8e8" stroke-width="2"/>
+<rect x="47" y="134" width="39" height="34" rx="9" fill="#e3f2fd" stroke="#e3f2fd" stroke-width="2"/>
+<text x="58" y="158" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="18" font-weight="700" fill="#1d6795">1</text>
+<text x="49" y="197" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="19" font-weight="700" fill="#17476e">Raw measurements</text>
+<text x="49" y="232" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">Eiger .h5 frames</text>
+<text x="49" y="257" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">Temperature controller .csv</text>
+<text x="49" y="282" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">Time stamps from both</text>
+<rect x="326" y="119" width="268" height="188" rx="15" fill="#fff" stroke="#c6d8e8" stroke-width="2"/>
+<rect x="339" y="134" width="39" height="34" rx="9" fill="#e3f2fd" stroke="#e3f2fd" stroke-width="2"/>
+<text x="350" y="158" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="18" font-weight="700" fill="#1d6795">2</text>
+<text x="341" y="197" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="19" font-weight="700" fill="#17476e">Align &amp; integrate</text>
+<text x="341" y="232" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">Match absolute timestamps</text>
+<text x="341" y="257" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">Pixel -&gt; 2θ via QoraGeom</text>
+<text x="341" y="282" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">2D frame -&gt; 1D profile</text>
+<rect x="618" y="119" width="268" height="188" rx="15" fill="#fff" stroke="#c6d8e8" stroke-width="2"/>
+<rect x="631" y="134" width="39" height="34" rx="9" fill="#e3f2fd" stroke="#e3f2fd" stroke-width="2"/>
+<text x="642" y="158" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="18" font-weight="700" fill="#1d6795">3</text>
+<text x="633" y="197" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="19" font-weight="700" fill="#17476e">Track physics</text>
+<text x="633" y="232" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">2θ profile vs time</text>
+<text x="633" y="257" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">Peak position + area + FWHM</text>
+<text x="633" y="282" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">Heating / hold / cooling</text>
+<rect x="910" y="119" width="268" height="188" rx="15" fill="#fff" stroke="#c6d8e8" stroke-width="2"/>
+<rect x="923" y="134" width="39" height="34" rx="9" fill="#e3f2fd" stroke="#e3f2fd" stroke-width="2"/>
+<text x="934" y="158" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="18" font-weight="700" fill="#1d6795">4</text>
+<text x="925" y="197" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="19" font-weight="700" fill="#17476e">Interpret &amp; export</text>
+<text x="925" y="232" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">Overview plot / HTML</text>
+<text x="925" y="257" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">Peak traces &amp; T50</text>
+<text x="925" y="282" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="15" font-weight="400" fill="#385971">CSV outputs with --save</text>
+<path d="M303,206 L313,206 M302,197 L313,206 L302,215" fill="none" stroke="#527ea3" stroke-width="3" stroke-linecap="round"/>
+<path d="M595,206 L605,206 M594,197 L605,206 L594,215" fill="none" stroke="#527ea3" stroke-width="3" stroke-linecap="round"/>
+<path d="M887,206 L897,206 M886,197 L897,206 L886,215" fill="none" stroke="#527ea3" stroke-width="3" stroke-linecap="round"/>
+<rect x="34" y="335" width="1132" height="187" rx="17" fill="#1b3449" stroke="#1b3449" stroke-width="2"/>
+<text x="57" y="368" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="16" font-weight="700" fill="#9ed0f0">SCHEMATIC PREVIEW / same time axis</text>
+<rect x="62" y="402" width="650" height="84" rx="7" fill="#263f57"/>
+<rect x="73" y="413" width="27" height="8" fill="#335c91"/>
+<rect x="73" y="423" width="27" height="8" fill="#42a0b1"/>
+<rect x="73" y="433" width="27" height="8" fill="#b2b77b"/>
+<rect x="73" y="443" width="27" height="8" fill="#ec9e6f"/>
+<rect x="73" y="453" width="27" height="8" fill="#335c91"/>
+<rect x="73" y="463" width="27" height="8" fill="#42a0b1"/>
+<rect x="102" y="413" width="27" height="8" fill="#335c91"/>
+<rect x="102" y="423" width="27" height="8" fill="#42a0b1"/>
+<rect x="102" y="433" width="27" height="8" fill="#b2b77b"/>
+<rect x="102" y="443" width="27" height="8" fill="#ec9e6f"/>
+<rect x="102" y="453" width="27" height="8" fill="#335c91"/>
+<rect x="102" y="463" width="27" height="8" fill="#42a0b1"/>
+<rect x="131" y="413" width="27" height="8" fill="#335c91"/>
+<rect x="131" y="423" width="27" height="8" fill="#42a0b1"/>
+<rect x="131" y="433" width="27" height="8" fill="#b2b77b"/>
+<rect x="131" y="443" width="27" height="8" fill="#ec9e6f"/>
+<rect x="131" y="453" width="27" height="8" fill="#335c91"/>
+<rect x="131" y="463" width="27" height="8" fill="#42a0b1"/>
+<rect x="160" y="413" width="27" height="8" fill="#335c91"/>
+<rect x="160" y="423" width="27" height="8" fill="#42a0b1"/>
+<rect x="160" y="433" width="27" height="8" fill="#b2b77b"/>
+<rect x="160" y="443" width="27" height="8" fill="#ec9e6f"/>
+<rect x="160" y="453" width="27" height="8" fill="#335c91"/>
+<rect x="160" y="463" width="27" height="8" fill="#42a0b1"/>
+<rect x="189" y="413" width="27" height="8" fill="#335c91"/>
+<rect x="189" y="423" width="27" height="8" fill="#42a0b1"/>
+<rect x="189" y="433" width="27" height="8" fill="#b2b77b"/>
+<rect x="189" y="443" width="27" height="8" fill="#ec9e6f"/>
+<rect x="189" y="453" width="27" height="8" fill="#335c91"/>
+<rect x="189" y="463" width="27" height="8" fill="#42a0b1"/>
+<rect x="218" y="413" width="27" height="8" fill="#377b9e"/>
+<rect x="218" y="423" width="27" height="8" fill="#65a6a6"/>
+<rect x="218" y="433" width="27" height="8" fill="#d9a861"/>
+<rect x="218" y="443" width="27" height="8" fill="#d0ad7b"/>
+<rect x="218" y="453" width="27" height="8" fill="#377b9e"/>
+<rect x="218" y="463" width="27" height="8" fill="#65a6a6"/>
+<rect x="247" y="413" width="27" height="8" fill="#377b9e"/>
+<rect x="247" y="423" width="27" height="8" fill="#65a6a6"/>
+<rect x="247" y="433" width="27" height="8" fill="#d9a861"/>
+<rect x="247" y="443" width="27" height="8" fill="#d0ad7b"/>
+<rect x="247" y="453" width="27" height="8" fill="#377b9e"/>
+<rect x="247" y="463" width="27" height="8" fill="#65a6a6"/>
+<rect x="276" y="413" width="27" height="8" fill="#377b9e"/>
+<rect x="276" y="423" width="27" height="8" fill="#65a6a6"/>
+<rect x="276" y="433" width="27" height="8" fill="#d9a861"/>
+<rect x="276" y="443" width="27" height="8" fill="#d0ad7b"/>
+<rect x="276" y="453" width="27" height="8" fill="#377b9e"/>
+<rect x="276" y="463" width="27" height="8" fill="#65a6a6"/>
+<rect x="305" y="413" width="27" height="8" fill="#377b9e"/>
+<rect x="305" y="423" width="27" height="8" fill="#65a6a6"/>
+<rect x="305" y="433" width="27" height="8" fill="#d9a861"/>
+<rect x="305" y="443" width="27" height="8" fill="#d0ad7b"/>
+<rect x="305" y="453" width="27" height="8" fill="#377b9e"/>
+<rect x="305" y="463" width="27" height="8" fill="#65a6a6"/>
+<rect x="334" y="413" width="27" height="8" fill="#377b9e"/>
+<rect x="334" y="423" width="27" height="8" fill="#65a6a6"/>
+<rect x="334" y="433" width="27" height="8" fill="#d9a861"/>
+<rect x="334" y="443" width="27" height="8" fill="#d0ad7b"/>
+<rect x="334" y="453" width="27" height="8" fill="#377b9e"/>
+<rect x="334" y="463" width="27" height="8" fill="#65a6a6"/>
+<rect x="363" y="413" width="27" height="8" fill="#42a0b1"/>
+<rect x="363" y="423" width="27" height="8" fill="#b2b77b"/>
+<rect x="363" y="433" width="27" height="8" fill="#ec9e6f"/>
+<rect x="363" y="443" width="27" height="8" fill="#335c91"/>
+<rect x="363" y="453" width="27" height="8" fill="#42a0b1"/>
+<rect x="363" y="463" width="27" height="8" fill="#b2b77b"/>
+<rect x="392" y="413" width="27" height="8" fill="#42a0b1"/>
+<rect x="392" y="423" width="27" height="8" fill="#b2b77b"/>
+<rect x="392" y="433" width="27" height="8" fill="#ec9e6f"/>
+<rect x="392" y="443" width="27" height="8" fill="#335c91"/>
+<rect x="392" y="453" width="27" height="8" fill="#42a0b1"/>
+<rect x="392" y="463" width="27" height="8" fill="#b2b77b"/>
+<rect x="421" y="413" width="27" height="8" fill="#42a0b1"/>
+<rect x="421" y="423" width="27" height="8" fill="#b2b77b"/>
+<rect x="421" y="433" width="27" height="8" fill="#ec9e6f"/>
+<rect x="421" y="443" width="27" height="8" fill="#335c91"/>
+<rect x="421" y="453" width="27" height="8" fill="#42a0b1"/>
+<rect x="421" y="463" width="27" height="8" fill="#b2b77b"/>
+<rect x="450" y="413" width="27" height="8" fill="#42a0b1"/>
+<rect x="450" y="423" width="27" height="8" fill="#b2b77b"/>
+<rect x="450" y="433" width="27" height="8" fill="#ec9e6f"/>
+<rect x="450" y="443" width="27" height="8" fill="#335c91"/>
+<rect x="450" y="453" width="27" height="8" fill="#42a0b1"/>
+<rect x="450" y="463" width="27" height="8" fill="#b2b77b"/>
+<rect x="479" y="413" width="27" height="8" fill="#42a0b1"/>
+<rect x="479" y="423" width="27" height="8" fill="#b2b77b"/>
+<rect x="479" y="433" width="27" height="8" fill="#ec9e6f"/>
+<rect x="479" y="443" width="27" height="8" fill="#335c91"/>
+<rect x="479" y="453" width="27" height="8" fill="#42a0b1"/>
+<rect x="479" y="463" width="27" height="8" fill="#b2b77b"/>
+<rect x="508" y="413" width="27" height="8" fill="#65a6a6"/>
+<rect x="508" y="423" width="27" height="8" fill="#d9a861"/>
+<rect x="508" y="433" width="27" height="8" fill="#d0ad7b"/>
+<rect x="508" y="443" width="27" height="8" fill="#377b9e"/>
+<rect x="508" y="453" width="27" height="8" fill="#65a6a6"/>
+<rect x="508" y="463" width="27" height="8" fill="#d9a861"/>
+<rect x="537" y="413" width="27" height="8" fill="#65a6a6"/>
+<rect x="537" y="423" width="27" height="8" fill="#d9a861"/>
+<rect x="537" y="433" width="27" height="8" fill="#d0ad7b"/>
+<rect x="537" y="443" width="27" height="8" fill="#377b9e"/>
+<rect x="537" y="453" width="27" height="8" fill="#65a6a6"/>
+<rect x="537" y="463" width="27" height="8" fill="#d9a861"/>
+<rect x="566" y="413" width="27" height="8" fill="#65a6a6"/>
+<rect x="566" y="423" width="27" height="8" fill="#d9a861"/>
+<rect x="566" y="433" width="27" height="8" fill="#d0ad7b"/>
+<rect x="566" y="443" width="27" height="8" fill="#377b9e"/>
+<rect x="566" y="453" width="27" height="8" fill="#65a6a6"/>
+<rect x="566" y="463" width="27" height="8" fill="#d9a861"/>
+<rect x="595" y="413" width="27" height="8" fill="#65a6a6"/>
+<rect x="595" y="423" width="27" height="8" fill="#d9a861"/>
+<rect x="595" y="433" width="27" height="8" fill="#d0ad7b"/>
+<rect x="595" y="443" width="27" height="8" fill="#377b9e"/>
+<rect x="595" y="453" width="27" height="8" fill="#65a6a6"/>
+<rect x="595" y="463" width="27" height="8" fill="#d9a861"/>
+<rect x="624" y="413" width="27" height="8" fill="#65a6a6"/>
+<rect x="624" y="423" width="27" height="8" fill="#d9a861"/>
+<rect x="624" y="433" width="27" height="8" fill="#d0ad7b"/>
+<rect x="624" y="443" width="27" height="8" fill="#377b9e"/>
+<rect x="624" y="453" width="27" height="8" fill="#65a6a6"/>
+<rect x="624" y="463" width="27" height="8" fill="#d9a861"/>
+<rect x="653" y="413" width="27" height="8" fill="#b2b77b"/>
+<rect x="653" y="423" width="27" height="8" fill="#ec9e6f"/>
+<rect x="653" y="433" width="27" height="8" fill="#335c91"/>
+<rect x="653" y="443" width="27" height="8" fill="#42a0b1"/>
+<rect x="653" y="453" width="27" height="8" fill="#b2b77b"/>
+<rect x="653" y="463" width="27" height="8" fill="#ec9e6f"/>
+<text x="65" y="503" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="14" font-weight="400" fill="#d5e6f3">time -&gt;</text>
+<text x="721" y="425" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="16" font-weight="700" fill="#b8d4ea">Peak trace</text>
+<path d="M735 475 C775 475 805 472 825 453 S875 421 928 417 S998 415 1030 414" fill="none" stroke="#f2c37e" stroke-width="4"/>
+<text x="727" y="503" font-family="Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif" font-size="13" font-weight="400" fill="#d5e6f3">Illustrative signal only; no measurement plotted.</text>
+<text x="34" y="555" font-family="Consolas, monospace" font-size="16" font-weight="400" fill="#42627c">Commands: uv run main.py overview x1 --save  |  uv run main.py heatmap FOLDER --watch 30</text></svg>

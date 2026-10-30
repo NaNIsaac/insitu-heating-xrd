@@ -11,6 +11,12 @@ with the temperature controller log, to follow the amorphous → crystalline tra
 - Automatic split into heating / hold / cooling segments from the temperature log, peak tracking, peak area · FWHM vs temperature
 - Per-experiment crystallized fraction X vs temperature and comparison of the transition temperature T50, Avrami exponent for isothermal measurements
 
+![Schematic of time-aligned Eiger frames, temperature logs, 2-theta profiles, peak tracking and outputs](docs/media/readme-pipeline.svg)
+
+*Illustrative SVG, not a captured terminal session or measured experimental result.*
+
+
+
 ```powershell
 uv run main.py heatmap Z:\...\IGO_x1_5th      # one folder → 2θ heatmap + peak area · FWHM
 uv run main.py overview x1                    # experiment x1 in experiments.toml → temperature + heatmap + segments on one figure

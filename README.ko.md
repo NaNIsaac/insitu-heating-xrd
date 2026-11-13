@@ -38,7 +38,6 @@ GitHub 에서 받아 씀 (`uv sync` 가 같이 설치).
 
 테스트:
 
-<!-- test -->
 ```powershell
 uv run pytest
 ```

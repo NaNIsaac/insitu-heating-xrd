@@ -18,8 +18,8 @@ with the temperature controller log, to follow the amorphous → crystalline tra
 
 
 ```powershell
-uv run main.py heatmap Z:\...\IGO_x1_5th      # one folder → 2θ heatmap + peak area · FWHM
-uv run main.py overview x1                    # experiment x1 in experiments.toml → temperature + heatmap + segments on one figure
+uv run main.py heatmap <data>/images/sample1   # one folder → 2θ heatmap + peak area · FWHM
+uv run main.py overview x1                    # experiment x1 in experiments.local.toml → temperature + heatmap + segments on one figure
 ```
 
 ## Installation
@@ -50,16 +50,16 @@ uv run main.py --no-show              # same as above, but does not open the bro
 uv run main.py -h                     # list of commands
 uv run main.py overview x1 --save     # outputs (PNG · CSV · HTML) are written to out/ only with --save
 uv run main.py image exp2.x8 200      # one h5 frame: raw | image unrolled to 2θ–χ (+ 2θ profile)
-uv run main.py image Z:\...\IGOx8_3rd -1          # last file in a folder (an .h5 file path also works)
+uv run main.py image <data>/images/exp2 -1        # last file in a folder (an .h5 file path also works)
 ```
 
 Saving: by default only figures and the browser (HTML goes to a temporary folder). Use `--save` (out/) or `--save-dir DIR`
 anywhere in a command, or the environment variable `INSITU_XRD_SAVE=1` / `[options] save = true` in experiments.toml.
 
 ```powershell
-uv run main.py profile Z:\...\IGO_x1_5th 125      # 2θ profile of one h5 frame + peak fit (no number = 0, -1 = last)
-uv run main.py heatmap Z:\...\IGO_x1_5th          # folder (or experiment name) → 2θ heatmap + peak area · FWHM (no temperature)
-uv run main.py heatmap Z:\...\IGO_x1_5th --watch 30   # during a measurement: pick up new files every 30 s
+uv run main.py profile <data>/images/sample1 125      # 2θ profile of one h5 frame + peak fit (no number = 0, -1 = last)
+uv run main.py heatmap <data>/images/sample1          # folder (or experiment name) → 2θ heatmap + peak area · FWHM (no temperature)
+uv run main.py heatmap <data>/images/sample1 --watch 30   # during a measurement: pick up new files every 30 s
 ```
 
 Values at the top of the heatmap: for each peak, the current area · the change over the last 5 min (% of the total increase, `--recent`) · FWHM · 2θ.
@@ -68,10 +68,10 @@ A recent change near 0 % means saturation = phase transition finished. The integ
 ### Temperature + heatmap + temperature segments on one figure (Origin style)
 
 ```powershell
-uv run main.py overview x1                                    # [[exp]] x1 in experiments.toml (images · recipe as written)
-uv run main.py overview Z:\exp\hkim\261004\images\test2x1
-uv run main.py overview Z:\...\testx1 Z:\...\test2x1          # several folders → joined in time order
-uv run main.py overview Z:\...\test2x1 data\temperature\other.csv   # specify the temperature log (chosen automatically if omitted)
+uv run main.py overview x1                                    # [[exp]] x1 (images · recipe from experiments.local.toml)
+uv run main.py overview <data>/images/sample2
+uv run main.py overview <data>/images/sample1 <data>/images/sample2          # several folders → joined in time order
+uv run main.py overview <data>/images/sample2 data/temperature/other.csv     # specify the temperature log (chosen automatically if omitted)
 ```
 
 Horizontal axis = time: segment labels on top → temperature graph → 2θ heatmap (vertical = 2θ) share the time axis, with the segment-boundary profiles on the right → `out/<sample>/<sample>_overview.png` (300 dpi).
@@ -134,30 +134,44 @@ energy_kev = 13.0             # X-ray energy [keV]
 alpha_deg  = 18.9             # detector arm 2θ [deg]
 pixel_um   = 75.0
 
-[paths]                       # defaults for commands with the path omitted (timing, center, profile, heatmap)
-default_folder = 'Z:\exp\hkim\261004\images\testx1'
-default_file   = 'Z:\exp\hkim\261004\images\testx1\testx1_00089.h5'
+[paths]                       # defaults for commands with the path omitted (override real paths in experiments.local.toml)
+default_folder = '<data>/images/sample1'
+default_file   = '<data>/images/sample1/sample1_00001.h5'
 ```
 
 If an entry or the file is missing, the previous defaults are used.
 
 For a one-off use, `--poni 514 850 --sdd 861.14 --energy 13 --alpha 18.9`.
 
-### Experiment comparison: crystallized fraction X vs temperature per peak + T50
+### Local path override (`experiments.local.toml`)
 
-In `experiments.toml`, write the **full paths** of the image folder · temperature log (recipe) for each experiment:
+`experiments.toml` only carries shared settings (`[geometry]`, `[options]`, `[peaks]`) and placeholder paths.
+Put real local paths and experiment runs in a gitignored `experiments.local.toml` right beside `experiments.toml`
+(any custom `<name>.toml` also reads `<name>.local.toml` when present):
+
+- Tables (`[geometry]`, `[paths]`, `[options]`, `[peaks]`) deep-merge key by key over the base file, so `experiments.local.toml` only needs the keys you want to override.
+- Arrays of tables (`[[exp]]`, `[[exp2]]`, ..., `[[iso]]`) replace the matching section from the base file.
 
 ```toml
+# experiments.local.toml (gitignored)
+[paths]
+default_folder = '<data>/images/sample1'
+default_file   = '<data>/images/sample1/sample1_00001.h5'
+
 [[exp]]
 name   = "x1"
-images = ['D:\USER_DATA\hkim\261004\data\IGOx1']                 # several entries are joined in time order
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\recipe_data_20261004_x1.csv']
+images = ['<data>/images/sample1']                 # several entries are joined in time order
+recipe = ['<data>/temperature/recipe_sample1.csv']
 
 [[exp2]]                 # second round of experiments → [[exp2]], third → [[exp3]] ...
 name   = "x8"
-images = ['Z:\exp\hkim\261004\images\IGOx8_3rd']
-recipe = ['D:\...\recipe_data_20261005_111220.csv']
+images = ['<data>/images/sample8_run2']
+recipe = ['<data>/temperature/recipe_sample8_run2.csv']
 ```
+
+### Experiment comparison: crystallized fraction X vs temperature per peak + T50
+
+Write the **full local paths** of each experiment's image folder and temperature log (recipe) in `experiments.local.toml`:
 
 ```powershell
 uv run main.py compare                  # all rounds ([[exp]], [[exp2]], ...) in turn, one browser window per round
@@ -233,11 +247,12 @@ It looks **only at the change in X** without identifying temperature segments �
 In `experiments.toml`, one `[[iso]]` per measurement (one measurement = a fresh piece of amorphous sample):
 
 ```toml
+# in experiments.local.toml
 [[iso]]
 sample = "x1"            # entries with the same sample are grouped for Arrhenius (Ea if there are 2 or more isothermal temperatures)
 T_iso  = 370             # (optional) for naming only. The actual temperature is computed from the log
-images = ['Z:\exp\hkim\26xxxx\images\IGOx1_iso370']
-recipe = ['D:\...\recipe_data_xxxx.csv']   # (optional) without it, only n, k
+images = ['<data>/images/sample1_iso370']
+recipe = ['<data>/temperature/recipe_iso370.csv']   # (optional) without it, only n, k
 # start / end = "10:05" (optional, frame range),  t0 = "10:15:02" (optional, specify the start of the change directly)
 ```
 
@@ -270,16 +285,16 @@ Measurement = heating → isothermal → cooling. It outputs only the full resul
 ```powershell
 uv run main.py merge-temp                        # raw/*.csv → merged file (rerun when a new log is added)
 uv run main.py temp 16:55:00                     # temperature at a given time (KST)
-uv run main.py temp Z:\...\test2x1_00086.h5      # temperature of a given frame
-uv run main.py temp Z:\...\test2x1               # temperature of every frame in a folder (--csv to specify the log, --max-gap)
+uv run main.py temp <data>/images/sample2/sample2_00086.h5   # temperature of a given frame
+uv run main.py temp <data>/images/sample2                    # temperature of every frame in a folder (--csv to specify the log, --max-gap)
 ```
 
 - Where the log is interrupted (more than 5 s from the nearest record), the temperature is NaN
 - A heatmap with a temperature panel · the `at` time marker is made from Python with `heatmap.run(heatmap.Config(temp_log=..., at=...))`, not from the CLI (below)
 
-Write the image folder/file as the **actual path** (it is not searched for automatically). overview also accepts experiment names from `experiments.toml` (`x1`, `exp2.x8`).
+Write the image folder/file as the **actual path** (it is not searched for automatically). overview also accepts experiment names from `experiments.toml` / `experiments.local.toml` (`x1`, `exp2.x8`).
 Options with several values are repeated (`--peaks 18.4 --peaks 21.4`).
-If the path is omitted, `default_folder` / `default_file` in `[paths]` of `experiments.toml` are used.
+If the path is omitted, `default_folder` / `default_file` in `[paths]` (overridden in `experiments.local.toml`) are used.
 `uv run insitu-xrd <command>` or `python -m insitu_xrd <command>` are equivalent.
 
 Directly from Python:
@@ -289,12 +304,15 @@ from pathlib import Path
 from insitu_xrd import heatmap, tth_profile, Geometry
 
 geo = Geometry(alpha_deg=20.0)
-tth_profile.run(Path(r"Z:\...\testx1_00089.h5"), geo, show=False)
+tth_profile.run(Path("<data>/images/sample1/sample1_00001.h5"), geo, show=False)
 from insitu_xrd.temperature import DEFAULT_LOG, TempLog
 
 res = heatmap.run(
     heatmap.Config(
-        folder=Path(r"Z:\...\test2x1"), geometry=geo, temp_log=DEFAULT_LOG, at=(10, "16:55:00")
+        folder=Path("<data>/images/sample2"),
+        geometry=geo,
+        temp_log=DEFAULT_LOG,
+        at=(10, "16:55:00"),
     )
 )
 res.frames  # per-frame file / time_kst / time_rel / temp_pv / temp_sv
@@ -309,7 +327,7 @@ TempLog().at([1791100537.0])  # Unix time → temperature
 main.py                  entry point (compare if no arguments)
 src/insitu_xrd/
   cli.py                 Typer subcommand definitions (insitu-xrd script · python -m insitu_xrd)
-  config.py              code constants such as HDF5 keys + reads experiments.toml [geometry]·[paths]
+  config.py              code constants such as HDF5 keys + reads experiments.toml (+ experiments.local.toml)
   style.py               common figure style (Origin rc, segment · peak colors)
   geometry.py            Geometry (calibration values, 2θ/q/d conversion uses qorageom)
   io.py                  reads images / EPICS timestamps

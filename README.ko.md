@@ -18,8 +18,8 @@ In-situ heating 2D XRD analysis: Eiger HDF5 detector images to 2θ profiles, tim
 
 
 ```powershell
-uv run main.py heatmap Z:\...\IGO_x1_5th      # 폴더 하나 → 2θ 히트맵 + 피크 면적 · FWHM
-uv run main.py overview x1                    # experiments.toml 의 실험 x1 → 온도 + 히트맵 + 구간 한 장
+uv run main.py heatmap <data>/images/sample1   # 폴더 하나 → 2θ 히트맵 + 피크 면적 · FWHM
+uv run main.py overview x1                    # experiments.local.toml 의 실험 x1 → 온도 + 히트맵 + 구간 한 장
 ```
 
 ## 설치
@@ -50,16 +50,16 @@ uv run main.py --no-show              # 위와 같되 브라우저 안 염
 uv run main.py -h                     # 명령 목록
 uv run main.py overview x1 --save     # 결과물(PNG · CSV · HTML)은 --save 일 때만 out/ 에 저장
 uv run main.py image exp2.x8 200      # h5 한 장: 원본 | 2θ–χ 로 펼친 이미지 (+ 2θ 프로파일)
-uv run main.py image Z:\...\IGOx8_3rd -1          # 폴더의 마지막 파일 (.h5 파일 경로도 가능)
+uv run main.py image <data>/images/exp2 -1        # 폴더의 마지막 파일 (.h5 파일 경로도 가능)
 ```
 
 저장: 기본은 그림 · 브라우저만 (HTML 은 임시 폴더). `--save` (out/) 또는 `--save-dir DIR` 을
 명령 어디에나, 또는 환경변수 `INSITU_XRD_SAVE=1` / experiments.toml `[options] save = true`.
 
 ```powershell
-uv run main.py profile Z:\...\IGO_x1_5th 125      # h5 한 장의 2θ 프로파일 + 피크 피팅 (번호 생략 = 0, -1 = 마지막)
-uv run main.py heatmap Z:\...\IGO_x1_5th          # 폴더 (또는 실험 이름) → 2θ 히트맵 + 피크 면적 · FWHM (온도 없이)
-uv run main.py heatmap Z:\...\IGO_x1_5th --watch 30   # 측정 중: 30 초마다 새 파일 반영
+uv run main.py profile <data>/images/sample1 125      # h5 한 장의 2θ 프로파일 + 피크 피팅 (번호 생략 = 0, -1 = 마지막)
+uv run main.py heatmap <data>/images/sample1          # 폴더 (또는 실험 이름) → 2θ 히트맵 + 피크 면적 · FWHM (온도 없이)
+uv run main.py heatmap <data>/images/sample1 --watch 30   # 측정 중: 30 초마다 새 파일 반영
 ```
 
 heatmap 맨 위 값: 피크마다 지금 면적 · 최근 5 분 변화 (전체 증가분 대비 %, `--recent`) · FWHM · 2θ.
@@ -68,10 +68,10 @@ heatmap 맨 위 값: 피크마다 지금 면적 · 최근 5 분 변화 (전체 �
 ### 온도 + 히트맵 + 온도 구간 한 장 (Origin 스타일)
 
 ```powershell
-uv run main.py overview x1                                    # experiments.toml 의 [[exp]] x1 (images · recipe 그대로)
-uv run main.py overview Z:\exp\hkim\261004\images\test2x1
-uv run main.py overview Z:\...\testx1 Z:\...\test2x1          # 폴더 여러 개 → 시간순으로 이어 붙임
-uv run main.py overview Z:\...\test2x1 data\temperature\other.csv   # 온도 로그 지정 (생략 시 자동 선택)
+uv run main.py overview x1                                    # experiments.local.toml 의 [[exp]] x1 (images · recipe 그대로)
+uv run main.py overview <data>/images/sample2
+uv run main.py overview <data>/images/sample1 <data>/images/sample2          # 폴더 여러 개 → 시간순으로 이어 붙임
+uv run main.py overview <data>/images/sample2 data/temperature/other.csv     # 온도 로그 지정 (생략 시 자동 선택)
 ```
 
 가로축 = 시간: 위에 구간 라벨 → 온도 그래프 → 2θ 히트맵(세로=2θ) 이 시간축 공유, 오른쪽에 구간 경계 프로파일 → `out/<샘플>/<샘플>_overview.png` (300 dpi).
@@ -134,30 +134,44 @@ energy_kev = 13.0             # X-선 에너지 [keV]
 alpha_deg  = 18.9             # 디텍터 암 2θ [deg]
 pixel_um   = 75.0
 
-[paths]                       # 경로 생략한 명령(timing, center, profile, heatmap)의 기본값
-default_folder = 'Z:\exp\hkim\261004\images\testx1'
-default_file   = 'Z:\exp\hkim\261004\images\testx1\testx1_00089.h5'
+[paths]                       # 경로 생략한 명령(timing, center, profile, heatmap)의 기본값 (실제 경로는 experiments.local.toml 에 덮어쓰기)
+default_folder = '<data>/images/sample1'
+default_file   = '<data>/images/sample1/sample1_00001.h5'
 ```
 
 항목이나 파일이 없으면 기존 기본값 사용.
 
 일회성으로는 `--poni 514 850 --sdd 861.14 --energy 13 --alpha 18.9`.
 
-### 실험 비교: 피크별 결정화 분율 X vs 온도 + T50
+### 로컬 경로 덮어쓰기 (`experiments.local.toml`)
 
-`experiments.toml` 에 실험마다 이미지 폴더 · 온도 로그(recipe) 의 **전체 경로**를 적고:
+`experiments.toml` 에는 공용 기본값(`[geometry]`, `[options]`, `[peaks]`)과 placeholder 경로만 둡니다.
+실제 로컬 경로와 실험 목록은 git 이 무시하는 `experiments.local.toml` 에 작성합니다
+(사용자 정의 `<name>.toml` 을 쓸 때도 같은 위치의 `<name>.local.toml` 이 있으면 함께 읽습니다):
+
+- 테이블(`[geometry]`, `[paths]`, `[options]`, `[peaks]`)은 키 단위로 deep-merge 되므로 `experiments.local.toml` 에는 바꿀 키만 적으면 됩니다.
+- 테이블 배열(`[[exp]]`, `[[exp2]]`, ..., `[[iso]]`)은 기본 파일의 같은 이름 섹션을 통째로 대체합니다.
 
 ```toml
+# experiments.local.toml (gitignored)
+[paths]
+default_folder = '<data>/images/sample1'
+default_file   = '<data>/images/sample1/sample1_00001.h5'
+
 [[exp]]
 name   = "x1"
-images = ['D:\USER_DATA\hkim\261004\data\IGOx1']                 # 여러 개면 시간순으로 합침
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\recipe_data_20261004_x1.csv']
+images = ['<data>/images/sample1']                 # 여러 개면 시간순으로 합침
+recipe = ['<data>/temperature/recipe_sample1.csv']
 
 [[exp2]]                 # 2회차 실험 → [[exp2]], 3회차 → [[exp3]] ...
 name   = "x8"
-images = ['Z:\exp\hkim\261004\images\IGOx8_3rd']
-recipe = ['D:\...\recipe_data_20261005_111220.csv']
+images = ['<data>/images/sample8_run2']
+recipe = ['<data>/temperature/recipe_sample8_run2.csv']
 ```
+
+### 실험 비교: 피크별 결정화 분율 X vs 온도 + T50
+
+`experiments.local.toml` 에 실험마다 이미지 폴더 · 온도 로그(recipe) 의 **전체 로컬 경로**를 적고:
 
 ```powershell
 uv run main.py compare                  # 회차([[exp]], [[exp2]], ...) 전부 차례로, 회차마다 브라우저 창 하나
@@ -233,11 +247,12 @@ uv run main.py profiles x1 x8 -T 350 -T 450 --no-end
 `experiments.toml` 에 측정마다 `[[iso]]` 하나 (측정 하나 = 비정질 새 조각):
 
 ```toml
+# experiments.local.toml 에 작성
 [[iso]]
 sample = "x1"            # 같은 sample 끼리 묶어 Arrhenius (등온 온도 2개 이상이면 Ea)
 T_iso  = 370             # (선택) 이름 붙이기용. 실제 온도는 로그에서 계산
-images = ['Z:\exp\hkim\26xxxx\images\IGOx1_iso370']
-recipe = ['D:\...\recipe_data_xxxx.csv']   # (선택) 없으면 n, k 만
+images = ['<data>/images/sample1_iso370']
+recipe = ['<data>/temperature/recipe_iso370.csv']   # (선택) 없으면 n, k 만
 # start / end = "10:05" (선택, 프레임 범위),  t0 = "10:15:02" (선택, 변화 시작 직접 지정)
 ```
 
@@ -270,16 +285,16 @@ uv run main.py avrami exp2                  # [[iso]] 대신 [[exp2]] — 기존
 ```powershell
 uv run main.py merge-temp                        # raw/*.csv → 병합본 (새 로그 추가 시 재실행)
 uv run main.py temp 16:55:00                     # 특정 시각(KST)의 온도
-uv run main.py temp Z:\...\test2x1_00086.h5      # 특정 프레임의 온도
-uv run main.py temp Z:\...\test2x1               # 폴더 전체 프레임별 온도 (--csv 로그 지정, --max-gap)
+uv run main.py temp <data>/images/sample2/sample2_00086.h5   # 특정 프레임의 온도
+uv run main.py temp <data>/images/sample2                    # 폴더 전체 프레임별 온도 (--csv 로그 지정, --max-gap)
 ```
 
 - 로그가 끊긴 구간(가장 가까운 기록과 5초 넘게 차이)은 온도 NaN
 - 온도 패널 · `at` 시각 표시가 붙은 히트맵은 CLI 가 아니라 파이썬 `heatmap.run(heatmap.Config(temp_log=..., at=...))` 으로 (아래)
 
-이미지 폴더/파일은 **실제 경로**를 그대로 적음 (자동으로 찾지 않음). overview 는 `experiments.toml` 의 실험 이름(`x1`, `exp2.x8`)도 받음.
+이미지 폴더/파일은 **실제 경로**를 그대로 적음 (자동으로 찾지 않음). overview 는 `experiments.toml` / `experiments.local.toml` 의 실험 이름(`x1`, `exp2.x8`)도 받음.
 여러 값 옵션은 반복해서 씀 (`--peaks 18.4 --peaks 21.4`).
-경로를 생략하면 `experiments.toml` `[paths]` 의 `default_folder` / `default_file` 사용.
+경로를 생략하면 `[paths]` (`experiments.local.toml` 로 덮어쓰기 가능)의 `default_folder` / `default_file` 사용.
 `uv run insitu-xrd <명령>` 또는 `python -m insitu_xrd <명령>` 도 동일.
 
 파이썬에서 직접:
@@ -289,12 +304,15 @@ from pathlib import Path
 from insitu_xrd import heatmap, tth_profile, Geometry
 
 geo = Geometry(alpha_deg=20.0)
-tth_profile.run(Path(r"Z:\...\testx1_00089.h5"), geo, show=False)
+tth_profile.run(Path("<data>/images/sample1/sample1_00001.h5"), geo, show=False)
 from insitu_xrd.temperature import DEFAULT_LOG, TempLog
 
 res = heatmap.run(
     heatmap.Config(
-        folder=Path(r"Z:\...\test2x1"), geometry=geo, temp_log=DEFAULT_LOG, at=(10, "16:55:00")
+        folder=Path("<data>/images/sample2"),
+        geometry=geo,
+        temp_log=DEFAULT_LOG,
+        at=(10, "16:55:00"),
     )
 )
 res.frames  # 프레임별 file / time_kst / time_rel / temp_pv / temp_sv
@@ -309,7 +327,7 @@ TempLog().at([1791100537.0])  # Unix 시각 → 온도
 main.py                  진입점 (인자 없으면 compare)
 src/insitu_xrd/
   cli.py                 Typer 서브커맨드 정의 (insitu-xrd 스크립트 · python -m insitu_xrd)
-  config.py              HDF5 키 등 코드 상수 + experiments.toml [geometry]·[paths] 읽기
+  config.py              HDF5 키 등 코드 상수 + experiments.toml (+ experiments.local.toml) 읽기
   style.py               그림 공통 스타일 (Origin rc, 구간·피크 색)
   geometry.py            Geometry (캘리브레이션 값, 2θ/q/d 변환은 qorageom 사용)
   io.py                  이미지 / EPICS 타임스탬프 읽기

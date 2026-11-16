@@ -1,12 +1,13 @@
 """Project-wide settings.
 
 Values that change per experiment (detector geometry, beam energy, default image paths) are read
-from [geometry] and [paths] in experiments.toml in the project folder; the defaults below apply
-when the file or an entry is missing. Only code-side constants (HDF5 keys, EPICS epoch, output
-folder layout) live here.
+from [geometry] and [paths] in experiments.toml in the project folder; an optional gitignored
+experiments.local.toml (or <stem>.local.toml beside any settings file) overrides matching entries
+when present. Defaults below apply when the file or an entry is missing. Only code-side constants
+(HDF5 keys, EPICS epoch, output folder layout) live here.
 
-Image paths are not searched for automatically: write the real paths in experiments.toml or on
-the command line.
+Image paths are not searched for automatically: write real local paths in experiments.local.toml
+or on the command line.
 """
 
 import os
@@ -19,19 +20,49 @@ DATA_DIR = PROJECT_ROOT / "data"  # local auxiliary data (temperature logs etc.)
 OUT_DIR = PROJECT_ROOT / "out"  # all outputs (out/<sample>/...)
 CACHE_DIR = OUT_DIR / "cache"  # integration cache (recomputed if deleted)
 SETTINGS_FILE = PROJECT_ROOT / "experiments.toml"
+OVERRIDE_FILE = PROJECT_ROOT / "experiments.local.toml"
 
 DSET = "entry/data/data"
 ATTR = "entry/instrument/NDAttributes"
 EPICS_EPOCH_OFFSET = 631_152_000  # 1990-01-01 UTC - 1970-01-01 UTC [s]
 
 
-def load_toml(path: Path) -> dict:
+def override_path(path: Path) -> Path | None:
+    """Return the companion *.local.toml path unless `path` itself is already local."""
+    p = Path(path)
+    if p.stem.endswith(".local"):
+        return None
+    return p.with_name(f"{p.stem}.local{p.suffix}")
+
+
+def _read_toml(path: Path) -> dict:
     """Read a TOML file; on a syntax error, exit naming the file."""
     try:
         with open(path, "rb") as f:
             return tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
         raise SystemExit(f"❌ {Path(path).name} 형식 오류: {e}") from e
+
+
+def _merge_toml(base: dict, override: dict) -> dict:
+    """Recursively deep-merge tables; replace arrays of tables and scalars."""
+    merged = dict(base)
+    for key, val in override.items():
+        if isinstance(val, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_toml(merged[key], val)
+        else:
+            merged[key] = val
+    return merged
+
+
+def load_toml(path: Path) -> dict:
+    """Read a TOML file and merge its companion *.local.toml override when present."""
+    p = Path(path)
+    data = _read_toml(p)
+    ov = override_path(p)
+    if ov is not None and ov.exists():
+        return _merge_toml(data, _read_toml(ov))
+    return data
 
 
 def project_path(s: str | Path) -> Path:
@@ -63,8 +94,8 @@ ALPHA_DEG = float(_geo.get("alpha_deg", 18.9))  # detector arm 2θ [deg]
 PIXEL_UM = float(_geo.get("pixel_um", 75.0))  # pixel size [µm]
 
 # defaults for commands run without a path (timing, center, profile, heatmap)
-DEFAULT_FOLDER = project_path(_paths.get("default_folder", r"Z:\exp\hkim\261004\images\testx1"))
-DEFAULT_FILE = project_path(_paths.get("default_file", DEFAULT_FOLDER / "testx1_00089.h5"))
+DEFAULT_FOLDER = project_path(_paths.get("default_folder", "<data>/images/sample1"))
+DEFAULT_FILE = project_path(_paths.get("default_file", DEFAULT_FOLDER / "sample1_00001.h5"))
 
 # Saving results (PNG, CSV, HTML) is off by default: figures are only shown and the HTML for the
 # browser goes to a temporary folder. Turn it on with --save (under out/) or --save-dir DIR on any

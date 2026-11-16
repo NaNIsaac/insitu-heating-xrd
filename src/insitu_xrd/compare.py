@@ -107,6 +107,24 @@ def entry_name(e: dict, i: int = 1) -> str:
     return f"{sample}_{e['T_iso']:g}" if "T_iso" in e else sample
 
 
+def _roots_for(raw: dict) -> dict[str, str]:
+    from .config import _roots
+
+    return {**_roots, **{str(k): str(v) for k, v in raw.get("roots", {}).items()}}
+
+
+def _make_exp(e: dict, i: int, group: str, roots: dict[str, str]) -> Experiment:
+    return Experiment(
+        name=entry_name(e, i),
+        images=[project_path(s, roots=roots) for s in _as_list(e["images"])],
+        recipe=[project_path(s, roots=roots) for s in _as_list(e.get("recipe", []))],
+        start=e.get("start"),
+        end=e.get("end"),
+        color=e.get("color"),
+        group=group,
+    )
+
+
 def load_settings(
     path: Path = DEFAULT_CONFIG, need_exps: bool = True, group: str = "exp"
 ) -> Settings:
@@ -114,18 +132,10 @@ def load_settings(
     path = Path(path)
     raw = load_toml(path)
     o = raw.get("options", {})
-    exps = [
-        Experiment(
-            name=entry_name(e, i),
-            images=[project_path(s) for s in _as_list(e["images"])],
-            recipe=[project_path(s) for s in _as_list(e.get("recipe", []))],
-            start=e.get("start"),
-            end=e.get("end"),
-            color=e.get("color"),
-            group=group,
-        )
-        for i, e in enumerate(raw.get(group, []), start=1)
-    ]
+    exps: list[Experiment] = []
+    if need_exps:
+        roots = _roots_for(raw)
+        exps = [_make_exp(e, i, group, roots) for i, e in enumerate(raw.get(group, []), start=1)]
     if not exps and need_exps:
         raise SystemExit(
             f"❌ {path}: [[{group}]] 항목이 없음 (있는 회차: {', '.join(exp_groups(raw)) or '없음'})"
@@ -163,21 +173,22 @@ def find_exp(name: str, path: Path = DEFAULT_CONFIG) -> Experiment | None:
     group, _, short = name.partition(".") if name.split(".")[0] in raw else ("", "", name)
     groups = [group] if group else exp_groups(raw)
     every = [
-        (g, e, str(r.get("sample", "")))
+        (g, i, r, entry_name(r, i), str(r.get("sample", "")))
         for g in groups
-        for e, r in zip(load_settings(path, False, g).exps, raw.get(g, []))
+        for i, r in enumerate(raw.get(g, []), start=1)
     ]
-    hits = [(g, e) for g, e, _ in every if e.name == short] or [
-        (g, e) for g, e, s in every if s == short
+    hits = [(g, i, r, n) for g, i, r, n, _ in every if n == short] or [
+        (g, i, r, n) for g, i, r, n, s in every if s == short
     ]
     if not hits:
         return None
     if len(hits) > 1:
         print(
-            f"ℹ️  '{name}' 에 맞는 게 여럿: {', '.join(f'{g}.{e.name}' for g, e in hits)} → "
-            f"{hits[0][0]}.{hits[0][1].name} 사용 (다른 것은 그 이름으로)"
+            f"ℹ️  '{name}' 에 맞는 게 여럿: {', '.join(f'{g}.{n}' for g, _, _, n in hits)} → "
+            f"{hits[0][0]}.{hits[0][3]} 사용 (다른 것은 그 이름으로)"
         )
-    return hits[0][1]
+    g, i, r, _ = hits[0]
+    return _make_exp(r, i, g, _roots_for(raw))
 
 
 def exp_names(path: Path = DEFAULT_CONFIG) -> str:
@@ -186,7 +197,7 @@ def exp_names(path: Path = DEFAULT_CONFIG) -> str:
         return ""
     raw = load_toml(path)
     return ", ".join(
-        f"{g}.{e.name}" for g in exp_groups(raw) for e in load_settings(path, False, g).exps
+        f"{g}.{entry_name(e, i)}" for g in exp_groups(raw) for i, e in enumerate(raw[g], start=1)
     )
 
 

@@ -7,9 +7,9 @@
 #
 # 결과: out/compare/<파일이름>.png / .html / _T50.csv / _frames.csv
 #
-# 경로는 자동으로 찾지 않음 → 이미지 폴더 · 온도 로그 모두 전체 경로를 그대로 적기
-#   (2nd 측정, 로컬 백업, Z: 원본 등이 섞여 있어서 이름만으로 찾으면 엉뚱한 폴더를 쓸 수 있음)
-#   윈도우 경로는 '작은따옴표' 로 (역슬래시 그대로 사용)
+# 경로는 자동으로 찾지 않음 → <images>/... · <data>/... 로 적고
+#   실제 루트 경로는 git 에 포함되지 않는 experiments.local.toml [roots] 에 지정
+#   (2nd 측정, 로컬 백업(<data>), 공유 원본(<images>) 등이 섞여 있어서 이름만으로 찾으면 엉뚱한 폴더를 쓸 수 있음)
 #   상대경로를 쓰면 이 저장소의 루트 기준 (config.py 의 PROJECT_ROOT)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -24,8 +24,8 @@ pixel_um   = 75.0             # 픽셀 크기 [µm] (Eiger2 1M)
 
 # 경로를 생략한 명령(timing, center, profile, heatmap)의 기본 폴더 / 파일
 [paths]
-default_folder = 'Z:\exp\hkim\261004\images\testx1'
-default_file   = 'Z:\exp\hkim\261004\images\testx1\testx1_00089.h5'
+default_folder = '<images>/testx1'
+default_file   = '<images>/testx1/testx1_00089.h5'
 
 [options]
 cache   = "use"         # 적분 캐시: "use" 재사용 / "refresh" 매번 다시 적분 / "off" 안 씀 (명령에 --refresh · --no-cache 로 일회성)
@@ -53,63 +53,63 @@ fit_range = [0.15, 0.85]  # Avrami 플롯 직선 피팅에 쓰는 X 범위
 
 [[exp]]
 name   = "x1"
-images = ['D:\USER_DATA\hkim\261004\data\IGOx1_2nd']                                  # 18:22~19:46
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x1_2nd\recipe_data_20261005_073454.csv'] # 18:07~19:45
+images = ['<data>/IGOx1_2nd']                                  # 18:22~19:46
+recipe = ['<data>/temperature/261005_9C_IGO_x1_2nd/recipe_data_20261005_073454.csv'] # 18:07~19:45
 
 [[exp]]
 name   = "x2"
-images = ['D:\USER_DATA\hkim\261004\data\IGOx2']                                  # 20:29~21:54
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\recipe_data_20261004_x2.csv'] # 20:10~21:49
+images = ['<data>/IGOx2']                                  # 20:29~21:54
+recipe = ['<data>/temperature/recipe_data_20261004_x2.csv'] # 20:10~21:49
 
 [[exp]]
 name   = "x4"
-images = ['Z:\exp\hkim\261004\images\IGOx4']        # 03:50~05:06 (03:14~03:18 이전 측정 일부 섞임)
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261004_9C_IGO_x4_2nd\recipe_data_20261005_032752.csv']
+images = ['<images>/IGOx4']        # 03:50~05:06 (03:14~03:18 이전 측정 일부 섞임)
+recipe = ['<data>/temperature/261004_9C_IGO_x4_2nd/recipe_data_20261005_032752.csv']
 
 [[exp]]
 name   = "x8"
-images = ['D:\USER_DATA\hkim\261004\data\IGOx8']    # 로컬 백업 (05:36~06:59, 정상 x8). Z:\...\IGOx8 은 다른 데이터
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261004_9C_IGO_x8_2nd\recipe_data_20261005_051334.csv']
+images = ['<data>/IGOx8']    # 로컬 백업 (05:36~06:59, 정상 x8). <images>/IGOx8 은 다른 데이터
+recipe = ['<data>/temperature/261004_9C_IGO_x8_2nd/recipe_data_20261005_051334.csv']
 
 [[exp2]]
 name   = "x1"
-images = ['Z:\exp\hkim\261004\images\IGOx1_3rd']                                
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x1_3rd\recipe_data_20261005_145012.csv'] 
+images = ['<images>/IGOx1_3rd']                                
+recipe = ['<data>/temperature/261005_9C_IGO_x1_3rd/recipe_data_20261005_145012.csv'] 
 
 [[exp2]]
 name   = "x2"
-images = ['Z:\exp\hkim\261004\images\IGOx2_2nd']                                 
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x2_2nd\recipe_data_20261005_125922.csv'] 
+images = ['<images>/IGOx2_2nd']                                 
+recipe = ['<data>/temperature/261005_9C_IGO_x2_2nd/recipe_data_20261005_125922.csv'] 
 
 [[exp2]]
 name   = "x4"
-images = ['Z:\exp\hkim\261004\images\IGOx4_3rd']        
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x4_3rd\recipe_data_20261005_092228.csv']
+images = ['<images>/IGOx4_3rd']        
+recipe = ['<data>/temperature/261005_9C_IGO_x4_3rd/recipe_data_20261005_092228.csv']
 
 [[exp2]]
 name   = "x8"
-images = ['Z:\exp\hkim\261004\images\IGOx8_3rd']    
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x8_3rd\recipe_data_20261005_111220.csv']
+images = ['<images>/IGOx8_3rd']    
+recipe = ['<data>/temperature/261005_9C_IGO_x8_3rd/recipe_data_20261005_111220.csv']
 
 [[exp3]]
 name   = "x4"
-images = ['Z:\exp\hkim\261004\images\IGOx4_5th']                                
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGOx4_5th\recipe_data_20261005_145012.csv']
+images = ['<images>/IGOx4_5th']                                
+recipe = ['<data>/temperature/261005_9C_IGOx4_5th/recipe_data_20261005_145012.csv']
 
 [[exp3]]
 name   = "x8"
-images = ['Z:\exp\hkim\261004\images\IGOx8_5th']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x8_5th\recipe_data_20261005_183627.csv']
+images = ['<images>/IGOx8_5th']                                  
+recipe = ['<data>/temperature/261005_9C_IGO_x8_5th/recipe_data_20261005_183627.csv']
 
 [[exp3]]
 name   = "x2"
-images = ['Z:\exp\hkim\261004\images\IGO_x2_5th']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x2_5th\recipe_data_20261005_203424.csv']
+images = ['<images>/IGO_x2_5th']                                  
+recipe = ['<data>/temperature/261005_9C_IGO_x2_5th/recipe_data_20261005_203424.csv']
 
 [[exp3]]
 name   = "x1"
-images = ['Z:\exp\hkim\261004\images\IGO_x1_5th']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x1_5th\recipe_data_20261005_222223.csv']
+images = ['<images>/IGO_x1_5th']                                  
+recipe = ['<data>/temperature/261005_9C_IGO_x1_5th/recipe_data_20261005_222223.csv']
 # ─────────────────────────────────────────────────────────────────────────────
 # 등온 실험 → Avrami 지수 (uv run python main.py avrami)
 # 측정 하나 = 비정질 새 조각 하나. 온도 구간 판별 없이 X 변화만 봄 (처음 프레임 = 0, 마지막 = 1)
@@ -125,70 +125,70 @@ recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x1_5th\recipe
 # ─────────────────────────────────────────────────────────────────────────────
 #uv run main.py compare iso
 #uv run main.py overview --iso iso.x2
-#uv run main.py heatmap "Z:\exp\hkim\261004\images\IGO_x2_isotemp_1st"
+#uv run main.py heatmap "<images>/IGO_x2_isotemp_1st"
 [[iso]]
 sample = "x1"
 T_iso  = 380
-images = ['Z:\exp\hkim\261004\images\IGO_x1_5th']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x1_isotemp_1st\recipe_data_20261005_222223.csv']
+images = ['<images>/IGO_x1_5th']                                  
+recipe = ['<data>/temperature/261005_9C_IGO_x1_isotemp_1st/recipe_data_20261005_222223.csv']
 
 [[iso]]
 sample = "x2"
 T_iso  = 380
-images = ['Z:\exp\hkim\261004\images\IGO_x2_isotemp_1st']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261005_9C_IGO_x2_isotemp_1st\recipe_data_20261006_010057.csv']
+images = ['<images>/IGO_x2_isotemp_1st']                                  
+recipe = ['<data>/temperature/261005_9C_IGO_x2_isotemp_1st/recipe_data_20261006_010057.csv']
 
 [[iso]]
 sample = "x4"
 T_iso  = 360
-images = ['Z:\exp\hkim\261004\images\IGO_x4_isotemp_1st']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261006_9C_IGO_x4_isotemp_1st\recipe_data_20261006_015924.csv']
+images = ['<images>/IGO_x4_isotemp_1st']                                  
+recipe = ['<data>/temperature/261006_9C_IGO_x4_isotemp_1st/recipe_data_20261006_015924.csv']
 
 [[iso]]
 sample = "x8"
 T_iso  = 300
-images = ['Z:\exp\hkim\261004\images\IGO_x8_isotemp_1st']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261006_9C_IGO_x8_isotemp_1st\recipe_data_20261006_025136.csv']
+images = ['<images>/IGO_x8_isotemp_1st']                                  
+recipe = ['<data>/temperature/261006_9C_IGO_x8_isotemp_1st/recipe_data_20261006_025136.csv']
 
 [[iso2]]
 sample = "x8"
 T_iso  = 290
-images = ['Z:\exp\hkim\261004\images\IGO_x8_isotemp_2nd']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261006_9C_IGO_x8_isotemp_2nd\recipe_data_20261006_033844.csv']
+images = ['<images>/IGO_x8_isotemp_2nd']                                  
+recipe = ['<data>/temperature/261006_9C_IGO_x8_isotemp_2nd/recipe_data_20261006_033844.csv']
 
 [[iso2]]
 sample = "x4"
 T_iso  = 350
-images = ['Z:\exp\hkim\261004\images\IGO_x4_isotemp_2nd']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261006_9C_IGO_x4_isotemp_2nd\recipe_data_20261006_043746.csv']
+images = ['<images>/IGO_x4_isotemp_2nd']                                  
+recipe = ['<data>/temperature/261006_9C_IGO_x4_isotemp_2nd/recipe_data_20261006_043746.csv']
 
 [[iso2]]
 sample = "x2"
 T_iso  = 370
-images = ['Z:\exp\hkim\261004\images\IGO_x2_isotemp_2nd']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261006_9C_IGO_x2_isotemp_2nd\recipe_data_20261006_053522.csv']
+images = ['<images>/IGO_x2_isotemp_2nd']                                  
+recipe = ['<data>/temperature/261006_9C_IGO_x2_isotemp_2nd/recipe_data_20261006_053522.csv']
 
 [[iso2]]
 sample = "x1"
 T_iso  = 370
-images = ['Z:\exp\hkim\261004\images\IGO_x1_isotemp_2nd']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261006_9C_IGO_x1_isotemp_2nd\recipe_data_20261006_064644.csv']
+images = ['<images>/IGO_x1_isotemp_2nd']                                  
+recipe = ['<data>/temperature/261006_9C_IGO_x1_isotemp_2nd/recipe_data_20261006_064644.csv']
 
 
 [[iso2]]
 sample = "x2"
 T_iso  = 370
-images = ['Z:\exp\hkim\261004\images\IGO_x1_isotemp_3rd']                                  
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261006_9C_IGO_x1_isotemp_2nd\recipe_data_20261006_064644.csv']
+images = ['<images>/IGO_x1_isotemp_3rd']                                  
+recipe = ['<data>/temperature/261006_9C_IGO_x1_isotemp_2nd/recipe_data_20261006_064644.csv']
 
 [[iso3]]
 sample = "x1"
 T_iso  = 380
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261006_9C_IGO_x1_3rd_380\recipe_data_20261006_084631.csv']
-images = ['Z:\exp\hkim\261004\images\IGO_x1_isotemp_3rd']
+recipe = ['<data>/temperature/261006_9C_IGO_x1_3rd_380/recipe_data_20261006_084631.csv']
+images = ['<images>/IGO_x1_isotemp_3rd']
 
 [[iso3]]
 sample = "x2"
 T_iso  = 370
-recipe = ['D:\USER_DATA\hkim\261004\data\temperature\261006_9C_IGO_x1_3rd_380\recipe_data_20261006_084631.csv']
-images = ['Z:\exp\hkim\261004\images\IGO_x2_isotemp_3rd']
+recipe = ['<data>/temperature/261006_9C_IGO_x1_3rd_380/recipe_data_20261006_084631.csv']
+images = ['<images>/IGO_x2_isotemp_3rd']

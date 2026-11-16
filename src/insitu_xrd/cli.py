@@ -28,7 +28,7 @@ from typing import Annotated
 
 import typer
 
-from .config import DEFAULT_FILE, DEFAULT_FOLDER, SETTINGS_FILE
+from .config import DEFAULT_FILE, DEFAULT_FOLDER, SETTINGS_FILE, resolve_root_arg
 from .geometry import Geometry
 from .temperature import DEFAULT_LOG, TEMP_DIR
 
@@ -386,7 +386,7 @@ def heatmap(
     """Folder to a 2θ time heatmap plus phase-transition graphs (peak area, FWHM, current value and recent change %); needs no temperature and works during a measurement."""
     from . import live
 
-    folder = Path(target)
+    folder = resolve_root_arg(target)
     if not folder.is_dir():
         from .compare import exp_names, find_exp
 
@@ -543,7 +543,7 @@ def center(
     from . import center_profile
 
     center_profile.run(
-        file,
+        resolve_root_arg(file),
         width,
         reduce.value,
         prominence=None if prominence < 0 else prominence,
@@ -560,7 +560,7 @@ def timing(
     """File creation time vs EPICS acquisition time, written to CSV."""
     from . import timing as tm
 
-    tm.run(folder, pattern)
+    tm.run(resolve_root_arg(folder), pattern)
 
 
 @app.command(rich_help_panel=TOOL)
@@ -640,7 +640,8 @@ def _overview_inputs(paths: list[Path]) -> tuple[list[Path], list[Path], bool]:
     from .compare import exp_names, find_exp
 
     folders, csvs, iso = [], [], False
-    for p in paths:
+    for raw_p in paths:
+        p = resolve_root_arg(raw_p)
         if p.suffix.lower() == ".csv":
             csvs.append(p)
         elif p.exists():

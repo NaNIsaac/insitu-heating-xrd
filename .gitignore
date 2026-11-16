@@ -16,3 +16,6 @@ out/
 data/
 *.h5
 *.csv
+
+# Local path/experiment overrides (never committed)
+*.local.toml

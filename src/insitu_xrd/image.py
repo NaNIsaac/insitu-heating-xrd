@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LogNorm, Normalize
 
-from .config import SETTINGS_FILE, out_dir, saving
+from .config import SETTINGS_FILE, out_dir, resolve_root_arg, saving
 from .geometry import FArray, Geometry
 from .io import list_files, read_frame
 from .style import ORIGIN_RC
@@ -47,7 +47,7 @@ def cake(img: FArray, tth: FArray, chi: FArray, tth_bin: float, chi_bin: float):
 
 def resolve(target: str, index: int) -> tuple[Path, int, int, list[Path]]:
     """Folder, .h5 file or experiments.toml experiment name to (file, index, total, temperature logs)."""
-    p = Path(target)
+    p = resolve_root_arg(target)
     if p.suffix.lower() == ".h5" and p.is_file():
         files = sorted(p.parent.glob("*.h5"))
         return p, files.index(p) if p in files else 0, len(files), []

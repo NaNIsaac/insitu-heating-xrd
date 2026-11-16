@@ -53,6 +53,7 @@ from .compare import (
     Experiment,
     Settings,
     _as_list,
+    _roots_for,
     check_paths,
     entry_name,
     load_exp,
@@ -94,6 +95,7 @@ def load_iso(
     """[peaks] and [options] from the settings file plus the list of [[iso]] (or [[exp]] for section="exp")."""
     st = load_settings(path, need_exps=False)
     raw = load_toml(path)
+    roots = _roots_for(raw)
     o = raw.get("options", {})
     opt = IsoOptions(fit_range=tuple(float(v) for v in o.get("fit_range", (0.15, 0.85))))
     runs = []
@@ -101,8 +103,8 @@ def load_iso(
         sample = str(e.get("sample") or e.get("name") or f"run{i}")
         exp = Experiment(
             name=entry_name(e, i),
-            images=[project_path(s) for s in _as_list(e["images"])],
-            recipe=[project_path(s) for s in _as_list(e.get("recipe", []))],
+            images=[project_path(s, roots=roots) for s in _as_list(e["images"])],
+            recipe=[project_path(s, roots=roots) for s in _as_list(e.get("recipe", []))],
             start=e.get("start"),
             end=e.get("end"),
             color=e.get("color"),

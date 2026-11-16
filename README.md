@@ -18,8 +18,8 @@ with the temperature controller log, to follow the amorphous → crystalline tra
 
 
 ```powershell
-uv run main.py heatmap <data>/images/sample1   # one folder → 2θ heatmap + peak area · FWHM
-uv run main.py overview x1                    # experiment x1 in experiments.local.toml → temperature + heatmap + segments on one figure
+uv run main.py heatmap <images>/sample1        # one folder → 2θ heatmap + peak area · FWHM
+uv run main.py overview x1                    # experiment x1 in experiments.toml → temperature + heatmap + segments on one figure
 ```
 
 ## Installation
@@ -68,10 +68,10 @@ A recent change near 0 % means saturation = phase transition finished. The integ
 ### Temperature + heatmap + temperature segments on one figure (Origin style)
 
 ```powershell
-uv run main.py overview x1                                    # [[exp]] x1 (images · recipe from experiments.local.toml)
-uv run main.py overview <data>/images/sample2
-uv run main.py overview <data>/images/sample1 <data>/images/sample2          # several folders → joined in time order
-uv run main.py overview <data>/images/sample2 data/temperature/other.csv     # specify the temperature log (chosen automatically if omitted)
+uv run main.py overview x1                                    # [[exp]] x1 in experiments.toml
+uv run main.py overview <images>/sample2
+uv run main.py overview <images>/sample1 <images>/sample2      # several folders → joined in time order
+uv run main.py overview <images>/sample2 data/temperature/other.csv   # specify the temperature log (chosen automatically if omitted)
 ```
 
 Horizontal axis = time: segment labels on top → temperature graph → 2θ heatmap (vertical = 2θ) share the time axis, with the segment-boundary profiles on the right → `out/<sample>/<sample>_overview.png` (300 dpi).
@@ -134,44 +134,48 @@ energy_kev = 13.0             # X-ray energy [keV]
 alpha_deg  = 18.9             # detector arm 2θ [deg]
 pixel_um   = 75.0
 
-[paths]                       # defaults for commands with the path omitted (override real paths in experiments.local.toml)
-default_folder = '<data>/images/sample1'
-default_file   = '<data>/images/sample1/sample1_00001.h5'
+[paths]                       # defaults for commands with the path omitted (resolved via [roots] in experiments.local.toml)
+default_folder = '<images>/testx1'
+default_file   = '<images>/testx1/testx1_00089.h5'
 ```
 
 If an entry or the file is missing, the previous defaults are used.
 
 For a one-off use, `--poni 514 850 --sdd 861.14 --energy 13 --alpha 18.9`.
 
-### Local path override (`experiments.local.toml`)
+### Local root paths (`experiments.local.toml`)
 
-`experiments.toml` only carries shared settings (`[geometry]`, `[options]`, `[peaks]`) and placeholder paths.
-Put real local paths and experiment runs in a gitignored `experiments.local.toml` right beside `experiments.toml`
+`experiments.toml` keeps the full experiment record (`[geometry]`, `[paths]`, `[options]`, `[peaks]`, `[[exp]]`…`[[iso3]]`)
+using named root prefixes such as `<images>/...` and `<data>/...`.
+Define the local paths for those roots in a gitignored `experiments.local.toml` right beside `experiments.toml`
 (any custom `<name>.toml` also reads `<name>.local.toml` when present):
 
-- Tables (`[geometry]`, `[paths]`, `[options]`, `[peaks]`) deep-merge key by key over the base file, so `experiments.local.toml` only needs the keys you want to override.
-- Arrays of tables (`[[exp]]`, `[[exp2]]`, ..., `[[iso]]`) replace the matching section from the base file.
+- `[roots]` maps each `<name>/...` prefix (`<images>`, `<data>`, …) to a local directory (relative roots resolve against the project root; absolute paths stay as written).
+- Any command that reads data stops with an error naming the missing root and `experiments.local.toml`; commands that do not read data still run.
+- Tables (`[geometry]`, `[paths]`, `[options]`, `[peaks]`, `[roots]`) deep-merge key by key over the base file, and arrays of tables (`[[exp]]`, `[[iso]]`, …) replace the matching section if also overridden locally.
 
 ```toml
 # experiments.local.toml (gitignored)
-[paths]
-default_folder = '<data>/images/sample1'
-default_file   = '<data>/images/sample1/sample1_00001.h5'
-
-[[exp]]
-name   = "x1"
-images = ['<data>/images/sample1']                 # several entries are joined in time order
-recipe = ['<data>/temperature/recipe_sample1.csv']
-
-[[exp2]]                 # second round of experiments → [[exp2]], third → [[exp3]] ...
-name   = "x8"
-images = ['<data>/images/sample8_run2']
-recipe = ['<data>/temperature/recipe_sample8_run2.csv']
+[roots]
+images = '<path to local images root>'
+data   = '<path to local data root>'
 ```
 
 ### Experiment comparison: crystallized fraction X vs temperature per peak + T50
 
-Write the **full local paths** of each experiment's image folder and temperature log (recipe) in `experiments.local.toml`:
+In `experiments.toml`, write each experiment's image folder and temperature log (recipe) relative to a root in `[roots]`, as a full local path, or relative to the project folder:
+
+```toml
+[[exp]]
+name   = "x1"
+images = ['<data>/IGOx1_2nd']                 # several entries are joined in time order
+recipe = ['<data>/temperature/recipe_sample1.csv']
+
+[[exp2]]                 # second round of experiments → [[exp2]], third → [[exp3]] ...
+name   = "x8"
+images = ['<images>/IGOx8_3rd']
+recipe = ['<data>/temperature/recipe_sample8.csv']
+```
 
 ```powershell
 uv run main.py compare                  # all rounds ([[exp]], [[exp2]], ...) in turn, one browser window per round
@@ -247,11 +251,11 @@ It looks **only at the change in X** without identifying temperature segments �
 In `experiments.toml`, one `[[iso]]` per measurement (one measurement = a fresh piece of amorphous sample):
 
 ```toml
-# in experiments.local.toml
+# in experiments.toml
 [[iso]]
 sample = "x1"            # entries with the same sample are grouped for Arrhenius (Ea if there are 2 or more isothermal temperatures)
 T_iso  = 370             # (optional) for naming only. The actual temperature is computed from the log
-images = ['<data>/images/sample1_iso370']
+images = ['<images>/sample1_iso370']
 recipe = ['<data>/temperature/recipe_iso370.csv']   # (optional) without it, only n, k
 # start / end = "10:05" (optional, frame range),  t0 = "10:15:02" (optional, specify the start of the change directly)
 ```

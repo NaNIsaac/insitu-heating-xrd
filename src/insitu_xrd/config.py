@@ -11,6 +11,7 @@ or on the command line.
 """
 
 import os
+import re
 import tempfile
 import tomllib
 from pathlib import Path
@@ -65,15 +66,42 @@ def load_toml(path: Path) -> dict:
     return data
 
 
-def project_path(s: str | Path) -> Path:
-    """Path from a settings file: absolute as is, relative to the project folder otherwise."""
+_ROOT_RE = re.compile(r"^<([^<>]+)>(?:[/\\](.*))?$")
+
+
+def _expand_path(s: str | Path, *, roots: dict[str, str], strict: bool) -> Path:
+    text = str(s)
+    if m := _ROOT_RE.match(text):
+        name, rest = m.group(1), m.group(2) or ""
+        base = roots.get(name)
+        if not base or not str(base).strip():
+            if strict:
+                raise SystemExit(
+                    f"❌ root '<{name}>' is not set — add `{name} = '...'` under [roots] in {OVERRIDE_FILE.name}"
+                )
+            return Path(text)
+        root = Path(base)
+        root = root if root.is_absolute() else PROJECT_ROOT / root
+        return root / rest if rest else root
     p = Path(s)
     return p if p.is_absolute() else PROJECT_ROOT / p
+
+
+def project_path(s: str | Path, *, roots: dict[str, str] | None = None) -> Path:
+    """Path from a settings file: expand leading <root>/ via [roots], keep absolute, resolve relative to PROJECT_ROOT."""
+    return _expand_path(s, roots=_roots if roots is None else roots, strict=True)
+
+
+def resolve_root_arg(target: str | Path) -> Path:
+    """Expand a leading <root>/... placeholder if present; otherwise return Path(target) unchanged."""
+    text = str(target)
+    return project_path(text) if _ROOT_RE.match(text) else Path(target)
 
 
 _S = load_toml(SETTINGS_FILE) if SETTINGS_FILE.exists() else {}
 _geo = _S.get("geometry", {})
 _paths = _S.get("paths", {})
+_roots: dict[str, str] = {str(k): str(v) for k, v in _S.get("roots", {}).items()}
 
 # Integration cache (out/cache):
 #   use     = reuse when the folder files (count, modification times), geometry and options match (default)
@@ -94,8 +122,12 @@ ALPHA_DEG = float(_geo.get("alpha_deg", 18.9))  # detector arm 2θ [deg]
 PIXEL_UM = float(_geo.get("pixel_um", 75.0))  # pixel size [µm]
 
 # defaults for commands run without a path (timing, center, profile, heatmap)
-DEFAULT_FOLDER = project_path(_paths.get("default_folder", "<data>/images/sample1"))
-DEFAULT_FILE = project_path(_paths.get("default_file", DEFAULT_FOLDER / "sample1_00001.h5"))
+DEFAULT_FOLDER = _expand_path(
+    _paths.get("default_folder", "<images>/testx1"), roots=_roots, strict=False
+)
+DEFAULT_FILE = _expand_path(
+    _paths.get("default_file", DEFAULT_FOLDER / "testx1_00089.h5"), roots=_roots, strict=False
+)
 
 # Saving results (PNG, CSV, HTML) is off by default: figures are only shown and the HTML for the
 # browser goes to a temporary folder. Turn it on with --save (under out/) or --save-dir DIR on any

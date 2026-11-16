@@ -13,7 +13,7 @@ import os
 import warnings
 from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -23,7 +23,17 @@ import pandas as pd
 from matplotlib.colors import LogNorm
 from tqdm.auto import tqdm
 
-from .config import ATTR, CACHE_DIR, CACHE_MODE, CACHE_MODES, DEFAULT_FOLDER, DSET, out_dir, saving
+from .config import (
+    ATTR,
+    CACHE_DIR,
+    CACHE_MODE,
+    CACHE_MODES,
+    DEFAULT_FOLDER,
+    DSET,
+    out_dir,
+    resolve_root_arg,
+    saving,
+)
 from .geometry import FArray, Geometry
 from .integrate import ProfileOptions, RadialIntegrator
 from .io import list_files, load_image, read_frame
@@ -368,6 +378,7 @@ def plot(res: HeatmapResult, cfg: Config) -> plt.Figure:
 
 
 def compute(cfg: Config) -> HeatmapResult:
+    cfg = replace(cfg, folder=resolve_root_arg(cfg.folder))
     x, Z, t, names = integrate_folder(cfg)
     unit = cfg.plot.time_unit
     fr = pd.DataFrame(
